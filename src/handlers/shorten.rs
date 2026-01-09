@@ -7,7 +7,7 @@ use crate::{
     utils::{codegen::gen_code, db_error::is_unique_violation_on_code, url_norm::normalize_url},
 };
 
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use serde_json::json;
 
 pub async fn shorten(

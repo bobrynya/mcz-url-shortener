@@ -7,9 +7,8 @@ use crate::{
 };
 
 use axum::{
-    middleware,
+    Router, middleware,
     routing::{get, post},
-    Router,
 };
 
 pub fn app_router(state: AppState) -> Router {

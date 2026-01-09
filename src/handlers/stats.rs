@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Path, Query, State},
     Json,
+    extract::{Path, Query, State},
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -8,7 +8,7 @@ use serde_json::json;
 
 use crate::{
     dto::clicks::{ClickItem, ClicksResponse},
-    error::{map_sqlx_error, AppError},
+    error::{AppError, map_sqlx_error},
     state::AppState,
 };
 
@@ -46,13 +46,13 @@ pub async fn stats_by_code(
     let from = q.from;
     let to = q.to;
 
-    if let (Some(f), Some(t)) = (from, to) {
-        if f >= t {
-            return Err(AppError::bad_request(
-                "from must be < to",
-                json!({"field": "from/to"}),
-            ));
-        }
+    if let (Some(f), Some(t)) = (from, to)
+        && f >= t
+    {
+        return Err(AppError::bad_request(
+            "from must be < to",
+            json!({"field": "from/to"}),
+        ));
     }
 
     let limit: i64 = page_size as i64;

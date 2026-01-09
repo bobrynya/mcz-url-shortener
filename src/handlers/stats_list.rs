@@ -1,6 +1,6 @@
 use axum::{
-    extract::{Query, State},
     Json,
+    extract::{Query, State},
 };
 use serde_json::json;
 
@@ -9,7 +9,7 @@ use crate::{
         stats::StatsResponse,
         stats_list::{StatsListQuery, StatsListResponse},
     },
-    error::{map_sqlx_error, AppError},
+    error::{AppError, map_sqlx_error},
     state::AppState,
 };
 
@@ -36,13 +36,13 @@ pub async fn stats_list(
     let from = q.from;
     let to = q.to;
 
-    if let (Some(f), Some(t)) = (from, to) {
-        if f >= t {
-            return Err(AppError::bad_request(
-                "from must be < to",
-                json!({"field": "from/to"}),
-            ));
-        }
+    if let (Some(f), Some(t)) = (from, to)
+        && f >= t
+    {
+        return Err(AppError::bad_request(
+            "from must be < to",
+            json!({"field": "from/to"}),
+        ));
     }
 
     let limit: i64 = page_size as i64;

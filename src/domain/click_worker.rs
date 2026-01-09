@@ -1,7 +1,7 @@
 use sqlx::{Error as SqlxError, PgPool};
 use tokio::sync::mpsc;
-use tokio_retry::strategy::ExponentialBackoff;
 use tokio_retry::RetryIf;
+use tokio_retry::strategy::ExponentialBackoff;
 
 use crate::domain::click_event::ClickEvent;
 

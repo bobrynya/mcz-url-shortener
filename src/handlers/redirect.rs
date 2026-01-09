@@ -1,6 +1,6 @@
 use axum::{
     extract::{ConnectInfo, Path, State},
-    http::{header, HeaderMap},
+    http::{HeaderMap, header},
     response::Redirect,
 };
 use chrono::Utc;
@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 
 use crate::{
     domain::click_event::ClickEvent,
-    error::{map_sqlx_error, AppError},
+    error::{AppError, map_sqlx_error},
     state::AppState,
 };
 

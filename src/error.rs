@@ -1,10 +1,10 @@
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[derive(Serialize)]
 struct ErrorBody {
@@ -89,13 +89,13 @@ impl IntoResponse for AppError {
 }
 
 pub fn map_sqlx_error(e: sqlx::Error) -> AppError {
-    if let Some(db) = e.as_database_error() {
-        if db.is_unique_violation() {
-            return AppError::conflict(
-                "Unique constraint violation",
-                json!({ "constraint": db.constraint() }),
-            );
-        }
+    if let Some(db) = e.as_database_error()
+        && db.is_unique_violation()
+    {
+        return AppError::conflict(
+            "Unique constraint violation",
+            json!({ "constraint": db.constraint() }),
+        );
     }
 
     AppError::internal("Database error", json!({}))
