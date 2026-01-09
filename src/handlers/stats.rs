@@ -98,7 +98,7 @@ pub async fn stats_by_code(
     // 2) страница кликов
     let rows = sqlx::query!(
         r#"
-    SELECT id, clicked_at, referer, user_agent, ip
+    SELECT id, clicked_at, referer, user_agent, host(ip) AS ip
     FROM link_clicks
     WHERE link_id = $1
       AND ($2::timestamptz IS NULL OR clicked_at >= $2)

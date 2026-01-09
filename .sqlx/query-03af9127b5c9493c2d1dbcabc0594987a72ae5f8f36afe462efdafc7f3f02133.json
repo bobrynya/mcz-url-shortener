@@ -1,0 +1,43 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    SELECT l.long_url, l.code, l.clicks as \"clicks!\", l.created_at as \"created_at!\"\n    FROM links l\n    WHERE\n      ($1::timestamptz IS NULL AND $2::timestamptz IS NULL)\n      OR EXISTS (\n        SELECT 1\n        FROM link_clicks lc\n        WHERE lc.link_id = l.id\n          AND ($1::timestamptz IS NULL OR lc.clicked_at >= $1)\n          AND ($2::timestamptz IS NULL OR lc.clicked_at <  $2)\n      )\n    ORDER BY l.created_at DESC\n    LIMIT $3 OFFSET $4\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "clicks!",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at!",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "03af9127b5c9493c2d1dbcabc0594987a72ae5f8f36afe462efdafc7f3f02133"
+}

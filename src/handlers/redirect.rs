@@ -4,7 +4,6 @@ use axum::{
     response::Redirect,
 };
 use chrono::Utc;
-use ipnetwork::IpNetwork;
 use serde_json::json;
 use std::net::IpAddr;
 use std::net::SocketAddr;
@@ -46,18 +45,14 @@ pub async fn redirect_by_code(
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string());
 
-    let ip = {
-        let ip: IpAddr = addr.ip();
-        // host-адрес: /32 для v4, /128 для v6
-        Some(IpNetwork::from(ip))
-    };
+    let ip: IpAddr = addr.ip();
 
     if let Err(e) = st.click_tx.try_send(ClickEvent {
         link_id: r.id,
         clicked_at: Utc::now(),
         referer,
         user_agent,
-        ip,
+        ip: Some(ip),
     }) {
         // очередь переполнена или воркер умер — редирект всё равно отдаём
         tracing::warn!(error = %e, "failed to enqueue click event");

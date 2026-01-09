@@ -7,7 +7,7 @@ pub struct ClickItem {
     pub clicked_at: DateTime<Utc>,
     pub referer: Option<String>,
     pub user_agent: Option<String>,
-    pub ip: Option<String>, // можно строкой, чтобы не тащить ipnetwork в API
+    pub ip: Option<String>,
 }
 
 #[derive(Serialize)]

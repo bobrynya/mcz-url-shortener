@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use sqlx::types::ipnetwork::IpNetwork;
+use std::net::IpAddr;
 
 #[derive(Debug, Clone)]
 pub struct ClickEvent {
@@ -7,5 +7,5 @@ pub struct ClickEvent {
     pub clicked_at: DateTime<Utc>,
     pub referer: Option<String>,
     pub user_agent: Option<String>,
-    pub ip: Option<IpNetwork>,
+    pub ip: Option<IpAddr>,
 }

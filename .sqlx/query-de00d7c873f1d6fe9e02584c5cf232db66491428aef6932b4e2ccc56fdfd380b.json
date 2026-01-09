@@ -1,0 +1,24 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    SELECT COUNT(*)::bigint AS \"total!\"\n    FROM link_clicks\n    WHERE link_id = $1\n      AND ($2::timestamptz IS NULL OR clicked_at >= $2)\n      AND ($3::timestamptz IS NULL OR clicked_at <  $3)\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "total!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Timestamptz",
+        "Timestamptz"
+      ]
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "de00d7c873f1d6fe9e02584c5cf232db66491428aef6932b4e2ccc56fdfd380b"
+}

@@ -25,17 +25,18 @@ pub async fn run_click_worker(mut rx: mpsc::Receiver<ClickEvent>, db: PgPool) {
         let op = || {
             let db = db.clone();
             let ev = ev.clone();
+            let ip_str: Option<String> = ev.ip.map(|ip| ip.to_string());
             async move {
                 sqlx::query!(
                     r#"
                     INSERT INTO link_clicks (link_id, clicked_at, referer, user_agent, ip)
-                    VALUES ($1, $2, $3, $4, $5)
+                    VALUES ($1, $2, $3, $4, ($5::text)::inet)
                     "#,
                     ev.link_id,
                     ev.clicked_at,
                     ev.referer,
                     ev.user_agent,
-                    ev.ip,
+                    ip_str,
                 )
                 .execute(&db)
                 .await

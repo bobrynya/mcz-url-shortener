@@ -1,0 +1,50 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n    SELECT id, clicked_at, referer, user_agent, host(ip) AS ip\n    FROM link_clicks\n    WHERE link_id = $1\n      AND ($2::timestamptz IS NULL OR clicked_at >= $2)\n      AND ($3::timestamptz IS NULL OR clicked_at <  $3)\n    ORDER BY clicked_at DESC, id DESC\n    LIMIT $4 OFFSET $5\n    ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "clicked_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 2,
+        "name": "referer",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "user_agent",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "ip",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true,
+      null
+    ]
+  },
+  "hash": "7fffbcc2a6c5396862f2ec48a9c9e6a90c9a14b1a47647f9fc7e9531645bed59"
+}
