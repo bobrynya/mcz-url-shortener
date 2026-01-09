@@ -135,11 +135,13 @@ curl -i http://127.0.0.1:3000/3c1930ac8e
 
 ### Список всех ссылок (с пагинацией)
 
-`GET /stats?page=1&page_size=25`
+`GET /stats?page=1&page_size=25&from=2026-01-01T00:00:00Z&to=2026-01-09T23:59:59Z`
 
 - `page` по умолчанию 1
 - `page_size` по умолчанию 25, диапазон 10..50
 - `total` — общее количество ссылок
+- `from` — фильтр от даты (RFC3339)
+- `to` — фильт по дату (RFC3339)
 
 ```bash
 curl -s "http://127.0.0.1:3000/stats?page=1&page_size=25"
@@ -166,12 +168,14 @@ curl -s "http://127.0.0.1:3000/stats?page=1&page_size=25"
 
 ### Клики по коду (event-based, с пагинацией)
 
-`GET /stats/{code}?page=1&page_size=25`
+`GET /stats/{code}?page=1&page_size=25&from=2026-01-01T00:00:00Z&to=2026-01-09T23:59:59Z`
 
 Возвращает события кликов из таблицы `link_clicks`:
 
 - `total` — общее число кликов по коду
 - `items` — список кликов (clicked_at/referer/user_agent/ip)
+- `from` — фильтр от даты (RFC3339)
+- `to` — фильт по дату (RFC3339)
 
 ```bash
 curl -s "http://127.0.0.1:3000/stats/3c1930ac8e?page=1&page_size=25"

@@ -33,22 +33,61 @@ pub async fn stats_list(
         ));
     }
 
+    let from = q.from;
+    let to = q.to;
+
+    if let (Some(f), Some(t)) = (from, to) {
+        if f >= t {
+            return Err(AppError::bad_request(
+                "from must be < to",
+                json!({"field": "from/to"}),
+            ));
+        }
+    }
+
     let limit: i64 = page_size as i64;
     let offset: i64 = ((page - 1) as i64) * limit;
 
-    let total_row = sqlx::query!(r#"SELECT COUNT(*)::bigint AS "total!" FROM links"#)
-        .fetch_one(&st.db)
-        .await
-        .map_err(map_sqlx_error)?;
+    let total_row = sqlx::query!(
+        r#"
+    SELECT COUNT(*)::bigint AS "total!"
+    FROM links l
+    WHERE
+      ($1::timestamptz IS NULL AND $2::timestamptz IS NULL)
+      OR EXISTS (
+        SELECT 1
+        FROM link_clicks lc
+        WHERE lc.link_id = l.id
+          AND ($1::timestamptz IS NULL OR lc.clicked_at >= $1)
+          AND ($2::timestamptz IS NULL OR lc.clicked_at <  $2)
+      )
+    "#,
+        from,
+        to,
+    )
+    .fetch_one(&st.db)
+    .await
+    .map_err(map_sqlx_error)?;
     let total = total_row.total;
 
     let rows = sqlx::query!(
         r#"
-        SELECT long_url, code, clicks as "clicks!", created_at as "created_at!"
-        FROM links
-        ORDER BY created_at DESC
-        LIMIT $1 OFFSET $2
-        "#,
+    SELECT l.long_url, l.code, l.clicks as "clicks!", l.created_at as "created_at!"
+    FROM links l
+    WHERE
+      ($1::timestamptz IS NULL AND $2::timestamptz IS NULL)
+      OR EXISTS (
+        SELECT 1
+        FROM link_clicks lc
+        WHERE lc.link_id = l.id
+          AND ($1::timestamptz IS NULL OR lc.clicked_at >= $1)
+          AND ($2::timestamptz IS NULL OR lc.clicked_at <  $2)
+      )
+    ORDER BY l.created_at DESC
+    LIMIT $3 OFFSET $4
+    "#,
+        from,
+        to,
         limit,
         offset
     )

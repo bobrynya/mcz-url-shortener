@@ -2,6 +2,7 @@ use axum::{
     extract::{Path, Query, State},
     Json,
 };
+use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -15,6 +16,10 @@ use crate::{
 pub struct PageQuery {
     pub page: Option<u32>,
     pub page_size: Option<u32>,
+
+    // диапазон времени клика (clicked_at)
+    pub from: Option<DateTime<Utc>>,
+    pub to: Option<DateTime<Utc>>,
 }
 
 pub async fn stats_by_code(
@@ -36,6 +41,18 @@ pub async fn stats_by_code(
             "page_size must be in [10..50]",
             json!({"field": "page_size", "min": 10, "max": 50}),
         ));
+    }
+
+    let from = q.from;
+    let to = q.to;
+
+    if let (Some(f), Some(t)) = (from, to) {
+        if f >= t {
+            return Err(AppError::bad_request(
+                "from must be < to",
+                json!({"field": "from/to"}),
+            ));
+        }
     }
 
     let limit: i64 = page_size as i64;
@@ -62,11 +79,15 @@ pub async fn stats_by_code(
     // 1) total кликов по ссылке
     let total_row = sqlx::query!(
         r#"
-        SELECT COUNT(*)::bigint AS "total!"
-        FROM link_clicks
-        WHERE link_id = $1
-        "#,
-        link_id
+    SELECT COUNT(*)::bigint AS "total!"
+    FROM link_clicks
+    WHERE link_id = $1
+      AND ($2::timestamptz IS NULL OR clicked_at >= $2)
+      AND ($3::timestamptz IS NULL OR clicked_at <  $3)
+    "#,
+        link_id,
+        from,
+        to,
     )
     .fetch_one(&st.db)
     .await
@@ -77,13 +98,17 @@ pub async fn stats_by_code(
     // 2) страница кликов
     let rows = sqlx::query!(
         r#"
-        SELECT id, clicked_at, referer, user_agent, ip
-        FROM link_clicks
-        WHERE link_id = $1
-        ORDER BY clicked_at DESC, id DESC
-        LIMIT $2 OFFSET $3
-        "#,
+    SELECT id, clicked_at, referer, user_agent, ip
+    FROM link_clicks
+    WHERE link_id = $1
+      AND ($2::timestamptz IS NULL OR clicked_at >= $2)
+      AND ($3::timestamptz IS NULL OR clicked_at <  $3)
+    ORDER BY clicked_at DESC, id DESC
+    LIMIT $4 OFFSET $5
+    "#,
         link_id,
+        from,
+        to,
         limit,
         offset
     )
