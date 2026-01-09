@@ -96,7 +96,7 @@ cargo run
 ```bash
 curl -s -X POST http://127.0.0.1:3000/shorten \
   -H 'content-type: application/json' \
-  -d '"https://example.com"'
+  -d '"https://example.com"' | jq
 ```
 
 Пример (массив):
@@ -104,7 +104,7 @@ curl -s -X POST http://127.0.0.1:3000/shorten \
 ```bash
 curl -s -X POST http://127.0.0.1:3000/shorten \
   -H 'content-type: application/json' \
-  -d '["https://example.com","https://example.org"]'
+  -d '["https://example.com","https://example.org"]' | jq
 ```
 
 Ответ:
@@ -144,7 +144,8 @@ curl -i http://127.0.0.1:3000/3c1930ac8e
 - `to` — фильт по дату (RFC3339)
 
 ```bash
-curl -s "http://127.0.0.1:3000/stats?page=1&page_size=25"
+curl -s "http://127.0.0.1:3000/stats?page=1&page_size=25" \
+  -H "Authorization: Bearer <token>" | jq
 ```
 
 Пример ответа:
@@ -178,7 +179,8 @@ curl -s "http://127.0.0.1:3000/stats?page=1&page_size=25"
 - `to` — фильт по дату (RFC3339)
 
 ```bash
-curl -s "http://127.0.0.1:3000/stats/3c1930ac8e?page=1&page_size=25"
+curl -s "http://127.0.0.1:3000/stats/3c1930ac8e?page=1&page_size=25" \
+  -H "Authorization: Bearer <token>" | jq
 ```
 
 Пример ответа:
@@ -201,6 +203,17 @@ curl -s "http://127.0.0.1:3000/stats/3c1930ac8e?page=1&page_size=25"
 }
 ```
 
+## Аутентификация (Bearer token)
+
+Статистические эндпоинты защищены долгоживущим токеном:
+
+- `GET /stats`
+- `GET /stats/{code}`
+
+Токен передаётся заголовком:
+
+`Authorization: Bearer <token>`
+
 
 ### Формат ошибок
 
@@ -212,6 +225,31 @@ curl -s "http://127.0.0.1:3000/stats/3c1930ac8e?page=1&page_size=25"
     "code": "validation_error",
     "message": "page_size must be in [10..50]",
     "details": { "field": "page_size", "min": 10, "max": 50 }
+  }
+}
+```
+
+### Ошибки аутентификации
+Если заголовок Authorization отсутствует:
+
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "Unauthorized",
+    "details": { "reason": "Authorization header is missing" }
+  }
+}
+```
+
+Если заголовок есть, но токен неверный/отозван:
+
+```json
+{
+  "error": {
+    "code": "unauthorized",
+    "message": "Unauthorized",
+    "details": { "reason": "Bearer token is invalid" }
   }
 }
 ```
