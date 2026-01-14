@@ -2,11 +2,11 @@ use crate::{
     handlers::{
         redirect::redirect_by_code, shorten::shorten, stats::stats_by_code, stats_list::stats_list,
     },
-    middlewares::access_log::access_log_mw,
+    middleware::access_log::access_log_mw,
     state::AppState,
 };
 
-use crate::middlewares::auth::auth_mw;
+use crate::middleware::auth::auth_mw;
 use axum::{
     Router, middleware,
     routing::{get, post},

@@ -2,7 +2,7 @@ mod domain;
 mod dto;
 mod error;
 mod handlers;
-mod middlewares;
+mod middleware;
 mod routes;
 mod state;
 mod utils;
