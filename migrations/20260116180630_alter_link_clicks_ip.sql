@@ -1,0 +1,2 @@
+ALTER TABLE link_clicks
+    ALTER COLUMN ip TYPE TEXT USING ip::TEXT;

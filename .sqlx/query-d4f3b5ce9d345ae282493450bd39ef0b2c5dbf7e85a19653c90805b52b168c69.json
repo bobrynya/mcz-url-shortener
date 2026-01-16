@@ -1,0 +1,49 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                l.id,\n                l.code,\n                l.long_url,\n                l.created_at,\n                COUNT(lc.id) FILTER (\n                    WHERE ($1::timestamptz IS NULL OR lc.clicked_at >= $1)\n                      AND ($2::timestamptz IS NULL OR lc.clicked_at <= $2)\n                ) as click_count\n            FROM links l\n            LEFT JOIN link_clicks lc ON l.id = lc.link_id\n            GROUP BY l.id, l.code, l.long_url, l.created_at\n            ORDER BY l.created_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "click_count",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "d4f3b5ce9d345ae282493450bd39ef0b2c5dbf7e85a19653c90805b52b168c69"
+}

@@ -1,3 +1,2 @@
-pub mod codegen;
-pub mod db_error;
-pub mod url_norm;
+pub mod code_generator;
+pub mod url_normalizer;
