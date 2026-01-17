@@ -7,7 +7,7 @@ use axum_auth::AuthBearer;
 
 use crate::{error::AppError, state::AppState};
 
-pub async fn auth_mw(
+pub async fn layer(
     State(st): State<AppState>,
     req: Request,
     next: Next,

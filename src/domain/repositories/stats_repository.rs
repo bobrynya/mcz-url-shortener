@@ -8,16 +8,17 @@ pub struct LinkStats {
     #[allow(dead_code)]
     pub link_id: i64,
     pub code: String,
+    pub domain: Option<String>,
     pub long_url: String,
-    pub total_clicks: i64,
+    pub total: i64,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone)]
 pub struct DetailedStats {
     pub link: crate::domain::entities::Link,
-    pub total_clicks: i64,
-    pub recent_clicks: Vec<Click>,
+    pub total: i64,
+    pub items: Vec<Click>,
 }
 
 #[derive(Debug, Clone)]
@@ -26,6 +27,34 @@ pub struct StatsFilter {
     pub to_date: Option<DateTime<Utc>>,
     pub offset: i64,
     pub limit: i64,
+    pub domain_id: Option<i64>,
+}
+
+impl StatsFilter {
+    pub fn new(offset: i64, limit: i64) -> Self {
+        Self {
+            from_date: None,
+            to_date: None,
+            offset,
+            limit,
+            domain_id: None,
+        }
+    }
+
+    pub fn with_domain(mut self, domain_id: Option<i64>) -> Self {
+        self.domain_id = domain_id;
+        self
+    }
+
+    pub fn with_date_range(
+        mut self,
+        from_date: Option<DateTime<Utc>>,
+        to_date: Option<DateTime<Utc>>,
+    ) -> Self {
+        self.from_date = from_date;
+        self.to_date = to_date;
+        self
+    }
 }
 
 /// Репозиторий для работы со статистикой и кликами

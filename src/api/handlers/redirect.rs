@@ -1,49 +1,47 @@
 use axum::{
-    extract::{ConnectInfo, Path, State},
-    http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
+    extract::{Path, State},
+    http::{HeaderMap, header},
+    response::{IntoResponse, Redirect},
 };
 use std::net::SocketAddr;
 
 use crate::domain::click_event::ClickEvent;
 use crate::error::AppError;
 use crate::state::AppState;
+use crate::utils::extract_domain::extract_domain_from_headers;
 
 /// GET /:code - Редирект на оригинальный URL
 pub async fn redirect_handler(
-    State(state): State<AppState>,
     Path(code): Path<String>,
+    State(state): State<AppState>,
     headers: HeaderMap,
-    ConnectInfo(addr): ConnectInfo<SocketAddr>,
-) -> Result<Response, AppError> {
-    // Получаем ссылку через сервис
-    let link = state.link_service.get_link_by_code(&code).await?;
+    axum::extract::ConnectInfo(addr): axum::extract::ConnectInfo<SocketAddr>,
+) -> Result<impl IntoResponse, AppError> {
+    // 1. Получаем домен из Host header
+    let domain = extract_domain_from_headers(&headers)?;
 
-    // Извлекаем метаданные для статистики
-    let user_agent = headers
-        .get(header::USER_AGENT)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+    // 2. Находим домен в БД
+    let domain_entity = state.domain_service.get_domain(&domain).await?;
 
-    let referer = headers
-        .get(header::REFERER)
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.to_string());
+    // 3. Ищем ссылку по коду и domain_id
+    let link = state
+        .link_service
+        .get_link_by_code(&code, domain_entity.id)
+        .await?;
 
-    // Извлекаем IP-адрес
-    let ip = Some(addr.ip().to_string());
+    // 4. Отправляем событие клика в очередь
+    let click_event = ClickEvent::new(
+        link.id,
+        Some(addr.ip().to_string()),
+        headers
+            .get(header::USER_AGENT)
+            .and_then(|v| v.to_str().ok()),
+        headers.get(header::REFERER).and_then(|v| v.to_str().ok()),
+    );
 
-    // Отправляем событие клика в очередь (неблокирующее)
-    let click_event = ClickEvent {
-        link_id: link.id,
-        user_agent,
-        referer,
-        ip,
-    };
-
-    // Игнорируем ошибку отправки (не критично)
+    // Игнорируем ошибку, если очередь переполнена
     let _ = state.click_sender.try_send(click_event);
 
-    // Выполняем редирект
-    Ok((StatusCode::FOUND, [(header::LOCATION, link.long_url)]).into_response())
+    // 5. Редирект
+    Ok(Redirect::permanent(&link.long_url))
 }

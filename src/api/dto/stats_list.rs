@@ -4,15 +4,16 @@ use serde::Serialize;
 /// Список всех ссылок со статистикой
 #[derive(Debug, Serialize)]
 pub struct StatsListResponse {
-    pub items: Vec<LinkStatsItem>,
     pub pagination: PaginationMeta,
+    pub items: Vec<LinkStatsItem>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct LinkStatsItem {
     pub code: String,
+    pub domain: Option<String>,
     pub long_url: String,
-    pub total_clicks: i64,
+    pub total: i64,
     pub created_at: DateTime<Utc>,
 }
 

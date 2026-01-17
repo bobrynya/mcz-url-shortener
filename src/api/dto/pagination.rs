@@ -69,4 +69,6 @@ pub struct StatsQueryParams {
 
     #[serde(flatten)]
     pub date_filter: DateFilterParams,
+
+    pub domain: Option<String>,
 }

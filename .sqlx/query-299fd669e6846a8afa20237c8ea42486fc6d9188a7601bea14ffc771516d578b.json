@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, code, long_url, created_at\n            FROM links\n            WHERE long_url = $1\n            ",
+  "query": "\n            SELECT id, name, token_hash, created_at, revoked_at\n            FROM api_tokens\n            WHERE name = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -10,17 +10,22 @@
       },
       {
         "ordinal": 1,
-        "name": "code",
+        "name": "name",
         "type_info": "Text"
       },
       {
         "ordinal": 2,
-        "name": "long_url",
+        "name": "token_hash",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
         "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "revoked_at",
         "type_info": "Timestamptz"
       }
     ],
@@ -33,8 +38,9 @@
       false,
       false,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "e09faf7218d1333f6c2de800f256d9d7f24fa65a28813da0e26efe04fd4c9697"
+  "hash": "299fd669e6846a8afa20237c8ea42486fc6d9188a7601bea14ffc771516d578b"
 }

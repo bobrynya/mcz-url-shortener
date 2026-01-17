@@ -49,14 +49,15 @@ impl StatsRepository for PgStatsRepository {
         code: &str,
         filter: StatsFilter,
     ) -> Result<Option<DetailedStats>, AppError> {
-        // Сначала получаем ссылку
         let link_row = sqlx::query!(
             r#"
-            SELECT id, code, long_url, created_at
-            FROM links
-            WHERE code = $1
+            SELECT l.id, l.code, l.long_url, d.domain as "domain?", l.created_at
+            FROM links l
+            LEFT JOIN domains d ON d.id = l.domain_id
+            WHERE code = $1 AND ($2::bigint IS NULL OR domain_id = $2)
             "#,
-            code
+            code,
+            filter.domain_id,
         )
         .fetch_optional(self.pool.as_ref())
         .await?;
@@ -70,11 +71,12 @@ impl StatsRepository for PgStatsRepository {
             link_row.id,
             link_row.code,
             link_row.long_url,
+            link_row.domain,
             link_row.created_at,
         );
 
         // Подсчитываем общее количество кликов с учётом фильтров по дате
-        let total_clicks = self
+        let total = self
             .count_clicks_by_link_id(link.id, filter.from_date, filter.to_date)
             .await?;
 
@@ -98,16 +100,12 @@ impl StatsRepository for PgStatsRepository {
         .fetch_all(self.pool.as_ref())
         .await?;
 
-        let recent_clicks = click_rows
+        let items = click_rows
             .into_iter()
             .map(|r| Click::new(r.id, r.link_id, r.clicked_at, r.user_agent, r.referer, r.ip))
             .collect();
 
-        Ok(Some(DetailedStats {
-            link,
-            total_clicks,
-            recent_clicks,
-        }))
+        Ok(Some(DetailedStats { link, total, items }))
     }
 
     async fn get_all_stats(&self, filter: StatsFilter) -> Result<Vec<LinkStats>, AppError> {
@@ -118,20 +116,23 @@ impl StatsRepository for PgStatsRepository {
                 l.code,
                 l.long_url,
                 l.created_at,
-                COUNT(lc.id) FILTER (
-                    WHERE ($1::timestamptz IS NULL OR lc.clicked_at >= $1)
-                      AND ($2::timestamptz IS NULL OR lc.clicked_at <= $2)
-                ) as click_count
+                d.domain as "domain?",
+                COUNT(lc.id) as "clicks!"
             FROM links l
             LEFT JOIN link_clicks lc ON l.id = lc.link_id
-            GROUP BY l.id, l.code, l.long_url, l.created_at
+                AND ($1::timestamptz IS NULL OR lc.clicked_at >= $1)
+                AND ($2::timestamptz IS NULL OR lc.clicked_at <= $2)
+            LEFT JOIN domains d ON d.id = l.domain_id
+            WHERE ($5::bigint IS NULL OR l.domain_id = $5)
+            GROUP BY l.id, l.code, l.long_url, l.created_at, d.domain
             ORDER BY l.created_at DESC
             LIMIT $3 OFFSET $4
             "#,
             filter.from_date,
             filter.to_date,
             filter.limit,
-            filter.offset
+            filter.offset,
+            filter.domain_id,
         )
         .fetch_all(self.pool.as_ref())
         .await?;
@@ -141,8 +142,9 @@ impl StatsRepository for PgStatsRepository {
             .map(|r| LinkStats {
                 link_id: r.id,
                 code: r.code,
+                domain: r.domain,
                 long_url: r.long_url,
-                total_clicks: r.click_count.unwrap_or(0),
+                total: r.clicks,
                 created_at: r.created_at,
             })
             .collect())

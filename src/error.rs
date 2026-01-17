@@ -6,17 +6,18 @@ use axum::{
 use serde::Serialize;
 use serde_json::{Value, json};
 use sqlx::Error as SqlxError;
+use validator::ValidationErrors;
 
 #[derive(Serialize)]
 struct ErrorBody {
     error: ErrorInfo,
 }
 
-#[derive(Serialize)]
-struct ErrorInfo {
-    code: &'static str,
-    message: String,
-    details: Value,
+#[derive(Debug, Serialize, Clone)]
+pub struct ErrorInfo {
+    pub code: &'static str,
+    pub message: String,
+    pub details: Value,
 }
 
 #[derive(Debug)]
@@ -60,6 +61,22 @@ impl AppError {
     pub fn unauthorized(message: impl Into<String>, details: Value) -> Self {
         Self::Unauthorized {
             message: message.into(),
+            details,
+        }
+    }
+
+    pub fn to_error_info(self) -> ErrorInfo {
+        let (code, message, details) = match self {
+            AppError::Validation { message, details } => ("validation_error", message, details),
+            AppError::NotFound { message, details } => ("not_found", message, details),
+            AppError::Conflict { message, details } => ("conflict", message, details),
+            AppError::Unauthorized { message, details } => ("unauthorized", message, details),
+            AppError::Internal { message, details } => ("internal_error", message, details),
+        };
+
+        ErrorInfo {
+            code,
+            message,
             details,
         }
     }
@@ -262,6 +279,52 @@ pub fn map_sqlx_error(e: SqlxError) -> AppError {
             tracing::error!(error = ?e, "Unexpected database error");
             metrics::counter!("database_errors_total", "type" => "unknown").increment(1);
             AppError::internal("Database operation failed", json!({}))
+        }
+    }
+}
+
+impl std::error::Error for AppError {}
+
+impl std::fmt::Display for AppError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AppError::Validation { message, .. } => write!(f, "Validation error: {}", message),
+            AppError::NotFound { message, .. } => write!(f, "Not found: {}", message),
+            AppError::Conflict { message, .. } => write!(f, "Conflict: {}", message),
+            AppError::Unauthorized { message, .. } => write!(f, "Unauthorized: {}", message),
+            AppError::Internal { message, .. } => write!(f, "Internal error: {}", message),
+        }
+    }
+}
+
+impl From<ValidationErrors> for AppError {
+    fn from(errors: ValidationErrors) -> Self {
+        // Преобразуем ValidationErrors в удобный JSON формат
+        let details = json!({
+            "fields": errors
+                .field_errors()
+                .iter()
+                .map(|(field, errors)| {
+                    (
+                        field.to_string(),
+                        errors
+                            .iter()
+                            .map(|e| {
+                                json!({
+                                    "code": e.code,
+                                    "message": e.message.as_ref().map(|m| m.to_string()),
+                                    "params": e.params
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                    )
+                })
+                .collect::<std::collections::HashMap<_, _>>()
+        });
+
+        AppError::Validation {
+            message: "Request validation failed".to_string(),
+            details,
         }
     }
 }

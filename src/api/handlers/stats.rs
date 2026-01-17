@@ -23,13 +23,16 @@ pub async fn stats_handler(
         .validate_and_get_offset_limit()
         .map_err(|e| AppError::bad_request(e, json!({})))?;
 
-    // Создаём фильтр
-    let filter = StatsFilter {
-        from_date: params.date_filter.from,
-        to_date: params.date_filter.to,
-        offset,
-        limit,
+    let domain_id = if let Some(domain_name) = &params.domain {
+        let domain = state.domain_service.get_domain(domain_name).await?;
+        Some(domain.id)
+    } else {
+        None
     };
+
+    let filter = StatsFilter::new(offset, limit)
+        .with_domain(domain_id)
+        .with_date_range(params.date_filter.from, params.date_filter.to);
 
     // Получаем детальную статистику
     let detailed_stats = state
@@ -39,16 +42,23 @@ pub async fn stats_handler(
 
     // Вычисляем количество страниц
     let total_pages =
-        ((detailed_stats.total_clicks as f64) / (params.pagination.page_size as f64)).ceil() as u32;
+        ((detailed_stats.total as f64) / (params.pagination.page_size as f64)).ceil() as u32;
 
     // Преобразуем в DTO
     let response = StatsResponse {
+        pagination: PaginationMeta {
+            page: params.pagination.page,
+            page_size: params.pagination.page_size,
+            total_items: detailed_stats.total,
+            total_pages,
+        },
         code: detailed_stats.link.code,
+        domain: detailed_stats.link.domain,
         long_url: detailed_stats.link.long_url,
         created_at: detailed_stats.link.created_at,
-        total_clicks: detailed_stats.total_clicks,
-        recent_clicks: detailed_stats
-            .recent_clicks
+        total: detailed_stats.total,
+        items: detailed_stats
+            .items
             .into_iter()
             .map(|click| crate::api::dto::clicks::ClickInfo {
                 clicked_at: click.clicked_at,
@@ -57,12 +67,6 @@ pub async fn stats_handler(
                 ip: click.ip,
             })
             .collect(),
-        pagination: PaginationMeta {
-            page: params.pagination.page,
-            page_size: params.pagination.page_size,
-            total_items: detailed_stats.total_clicks,
-            total_pages,
-        },
     };
 
     Ok(Json(response))

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, code, long_url, created_at\n            FROM links\n            WHERE code = $1\n            ",
+  "query": "\n            SELECT l.id, l.code, l.long_url, d.domain as \"domain?\", l.created_at\n            FROM links l\n            LEFT JOIN domains d ON d.id = l.domain_id\n            WHERE code = $1 AND ($2::bigint IS NULL OR domain_id = $2)\n            ",
   "describe": {
     "columns": [
       {
@@ -20,21 +20,28 @@
       },
       {
         "ordinal": 3,
+        "name": "domain?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Text",
+        "Int8"
       ]
     },
     "nullable": [
       false,
       false,
       false,
+      false,
       false
     ]
   },
-  "hash": "075118f5c3c171b3d7b4ec22830ddfb03b75cfa498c97f36761324f31aa86643"
+  "hash": "6841282f3cd830582f83a1a246f0b95cc7e6edabb5aa83b0c975d45aed502f72"
 }

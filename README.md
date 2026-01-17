@@ -5,7 +5,7 @@ Production-ready URL shortener на Rust с чистой слоистой арх
 ## 🚀 Возможности
 
 ### Основной функционал
-- **Сокращение ссылок**: `POST /shorten` принимает одну ссылку или массив ссылок
+- **Сокращение ссылок**: `POST /shorten` принимает массив ссылок
 - **Умная нормализация**: автоматическое приведение URL к канонической форме (lowercase host, удаление фрагментов, дефолтных портов)
 - **Дедупликация**: одинаковые URL после нормализации получают один и тот же код
 - **Редирект**: `GET /{code}` выполняет 302 редирект на оригинальный URL
@@ -16,7 +16,12 @@ Production-ready URL shortener на Rust с чистой слоистой арх
 - **Детальная статистика**: `GET /stats/{code}` — список всех кликов по конкретной ссылке
 - **Пагинация**: параметры `page` и `page_size` (10-50, по умолчанию 25)
 - **Фильтрация по датам**: параметры `from` и `to` в формате RFC3339
+- **Фильтрация по домену**: параметр `domain` (строка)
 - **Метаданные кликов**: IP-адрес, User-Agent, Referer, временная метка
+
+### Администрирование
+- **Список доменов**: `GET /domains` — все домены
+- **Состояние сервиса**: `GET /health` — состояние сервиса
 
 ### Безопасность и мониторинг
 - **Аутентификация**: Bearer token для защиты статистических эндпоинтов
@@ -30,55 +35,63 @@ Production-ready URL shortener на Rust с чистой слоистой арх
 Проект реализован с использованием **Clean Architecture** (слоистая архитектура) для максимальной поддерживаемости и тестируемости:
 
 ```
-
 src/
+├── lib.rs                     \# Композиция зависимостей
 ├── main.rs                    \# Точка входа, композиция зависимостей
-├── state.rs                   \# AppState с сервисами
+├── server.rs                  \# Сервер
 ├── error.rs                   \# Обработка ошибок + маппинг sqlx::Error
-├── routes.rs                  \# Роутинг HTTP
-│
-├── api/                       \# 📡 Presentation Layer
-│   ├── handlers/              \# HTTP handlers (тонкие, вызывают сервисы)
+├── config.rs                  \# Конфигурация
+├── api/                       \# Presentation Layer
+├── ├── routes.rs 
+│   ├── dto/                   \# Request/Response models
+│   │   ├── clicks.rs
+│   │   ├── domain.rs
+│   │   ├── health.rs
+│   │   ├── pagination.rs
 │   │   ├── shorten.rs
-│   │   ├── redirect.rs
 │   │   ├── stats.rs
 │   │   └── stats_list.rs
-│   ├── middleware/            \# HTTP middleware
-│   │   ├── access_log.rs
-│   │   └── auth.rs
-│   └── dto/                   \# Request/Response models
-│       ├── shorten.rs
-│       ├── stats.rs
-│       ├── clicks.rs
-│       └── pagination.rs
-│
-├── application/               \# 💼 Application Layer
+│   ├── handlers/              \# HTTP handlers
+│   │   ├── domains.rs
+│   │   ├── health.rs
+│   │   ├── redirect.rs
+│   │   ├── shorten.rs
+│   │   ├── stats.rs
+│   │   └── stats_list.rs
+│   └── middleware/            \# HTTP middleware
+│       ├── auth.rs
+│       ├── rate_limit.rs
+│       └── tracing.rs
+├── application/               \# Application Layer
 │   └── services/              \# Бизнес-логика
+│       ├── auth_service.rs    \# Аутентификация
+│       ├── domain_service.rs  \# Управление доменами
 │       ├── link_service.rs    \# Создание и управление ссылками
-│       ├── stats_service.rs   \# Работа со статистикой
-│       └── auth_service.rs    \# Аутентификация
-│
-├── domain/                    \# 🎯 Domain Layer
-│   ├── entities/              \# Доменные сущности
-│   │   ├── link.rs
-│   │   └── click.rs
-│   ├── repositories/          \# Trait-интерфейсы репозиториев
-│   │   ├── link_repository.rs
-│   │   ├── stats_repository.rs
-│   │   └── token_repository.rs
+│       └── stats_service.rs   \# Работа со статистикой
+├── bin/
+│   └── admin.rs               \# CLI
+├── domain/                    \# Domain Layer
 │   ├── click_event.rs         \# Событие клика
-│   └── click_worker.rs        \# Воркер обработки кликов
-│
-├── infrastructure/            \# 🔧 Infrastructure Layer
+│   ├── click_worker.rs        \# Воркер обработки кликов
+│   ├── entities/              \# Доменные сущности
+│   │   ├── click.rs
+│   │   ├── domain.rs
+│   │   └── link.rs
+│   └── repositories/          \# Trait-интерфейсы репозиториев
+│       ├── domain_repository.rs
+│       ├── link_repository.rs
+│       ├── stats_repository.rs
+│       └── token_repository.rs
+├── infrastructure/            \# Infrastructure Layer
 │   └── persistence/           \# PostgreSQL реализации
+│       ├── pg_domain_repository.rs
 │       ├── pg_link_repository.rs
 │       ├── pg_stats_repository.rs
 │       └── pg_token_repository.rs
-│
-└── utils/                     \# 🛠️ Утилиты
-│   ├── code_generator.rs      \# Генерация коротких кодов
-│   └── url_normalizer.rs      \# Нормализация URL
-
+└── utils/                     \# Утилиты
+    ├── code_generator.rs
+    ├── extract_domain.rs
+    └── url_normalizer.rs
 ```
 
 ### Преимущества архитектуры
@@ -166,19 +179,24 @@ cargo build --release
 
 **Request Body:**
 
-Вариант 1: Одна ссылка
-```json
-{
-  "url": "https://example.com/very/long/path"
-}
-```
+`domain` - опциональный ключ, если не передать, то ссылка будет прикреплена к домену по умолчанию
+`custom_code` - опциональный ключ, желаемый пользовательский ключ, если не передан, будет сгенерирован случайный
 
-Вариант 2: Массив ссылок
 ```json
 {
   "urls": [
-    "https://example.com",
-    "https://github.com"
+    {
+      "url": "https://chernyakov.com/very/long/path111333",
+      "custom_code": "promo2029"
+    },
+    {
+      "url": "https://example.com/another/path1111asd/zzzz/",
+      "domain": "s.example.com1",
+      "custom_code": "winter-sale"
+    },
+    {
+      "url": "https://github.com/rust-lang/rust/pull-requests/"
+    }
   ]
 }
 ```
@@ -187,28 +205,63 @@ cargo build --release
 
 ```json
 {
+  "summary": {
+    "total": 3,
+    "successful": 1,
+    "failed": 2
+  },
   "items": [
     {
-      "long_url": "https://example.com/very/long/path",
-      "code": "3c1930ac8e",
-      "short_url": "https://s.test.com/3c1930ac8e"
+      "long_url": "https://chernyakov.com/very/long/path111333",
+      "error": {
+        "code": "conflict",
+        "message": "Custom code already exists for this domain",
+        "details": {
+          "code": "promo2029",
+          "domain_id": 1
+        }
+      }
+    },
+    {
+      "long_url": "https://example.com/another/path1111asd/zzzz/",
+      "error": {
+        "code": "not_found",
+        "message": "Domain not found",
+        "details": {
+          "domain": "s.example.com1"
+        }
+      }
+    },
+    {
+      "long_url": "https://github.com/rust-lang/rust/pull-requests/",
+      "code": "qh3h-ccXXRgY",
+      "short_url": "https://s.example.com/qh3h-ccXXRgY"
     }
   ]
 }
 ```
+В ответе возвращает все полученные элементы, если ссылку не удалось создать по какой либо причине, ключ `error` покажет детали ошибки.
 
 **Пример с curl:**
-
 ```bash
-# Одна ссылка
 curl -X POST http://127.0.0.1:3000/shorten \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com"}' | jq
-
-# Массив ссылок
-curl -X POST http://127.0.0.1:3000/shorten \
-  -H 'Content-Type: application/json' \
-  -d '{"urls":["https://example.com","https://github.com"]}' | jq
+  -d '{
+    "urls": [
+      {
+        "url": "https://chernyakov.com/very/long/path111333",
+        "custom_code": "promo2029"
+      },
+      {
+        "url": "https://example.com/another/path1111asd/zzzz/",
+        "domain": "s.example.com1",
+        "custom_code": "winter-sale"
+      },
+      {
+        "url": "https://github.com/rust-lang/rust/pull-requests/"
+      }
+    ]
+  }' | jq
 ```
 
 
@@ -246,31 +299,33 @@ curl -i http://127.0.0.1:3000/3c1930ac8e
 **Query Parameters:**
 
 
-| Параметр | Тип | По умолчанию | Описание |
-| :-- | :-- | :-- | :-- |
-| `page` | integer | 1 | Номер страницы (начиная с 1) |
-| `page_size` | integer | 25 | Размер страницы (10-50) |
-| `from` | RFC3339 | - | Фильтр: клики от даты |
-| `to` | RFC3339 | - | Фильтр: клики до даты |
+| Параметр    | Тип     | По умолчанию | Описание                     |
+|:------------|:--------| :-- |:-----------------------------|
+| `page`      | integer | 1 | Номер страницы (начиная с 1) |
+| `page_size` | integer | 25 | Размер страницы (10-50)      |
+| `from`      | RFC3339 | - | Фильтр: клики от даты        |
+| `to`        | RFC3339 | - | Фильтр: клики до даты        |
+| `domain`    | string  | - | Фильтр: по домену            |
 
 **Response:** `200 OK`
 
 ```json
 {
-  "items": [
-    {
-      "code": "3c1930ac8e",
-      "long_url": "https://example.com",
-      "total_clicks": 42,
-      "created_at": "2026-01-16T10:30:00Z"
-    }
-  ],
   "pagination": {
     "page": 1,
     "page_size": 25,
     "total_items": 157,
     "total_pages": 7
-  }
+  },
+  "items": [
+    {
+      "code": "3c1930ac8e",
+      "domain": "s.example.com",
+      "long_url": "https://example.com",
+      "total": 42,
+      "created_at": "2026-01-16T10:30:00Z"
+    }
+  ]
 }
 ```
 
@@ -292,28 +347,31 @@ curl "http://127.0.0.1:3000/stats?page=1&page_size=10" \
 
 **Query Parameters:** те же что и у `/stats`
 
+**Дополнительно:** если не передан `domain` в фильтрах, то будет выведена первая подходящая ссылка
+
 **Response:** `200 OK`
 
 ```json
 {
+  "pagination": {
+    "page": 1,
+    "page_size": 25,
+    "total_items": 42,
+    "total_pages": 2
+  },
   "code": "3c1930ac8e",
+  "domain": "s.example.com",
   "long_url": "https://example.com",
   "created_at": "2026-01-16T10:30:00Z",
-  "total_clicks": 42,
-  "recent_clicks": [
+  "total": 42,
+  "items": [
     {
       "clicked_at": "2026-01-16T18:45:23Z",
       "user_agent": "Mozilla/5.0...",
       "referer": "https://news.ycombinator.com/",
       "ip": "203.0.113.42"
     }
-  ],
-  "pagination": {
-    "page": 1,
-    "page_size": 25,
-    "total_items": 42,
-    "total_pages": 2
-  }
+  ]
 }
 ```
 
@@ -324,12 +382,80 @@ curl "http://127.0.0.1:3000/stats/3c1930ac8e?from=2026-01-01T00:00:00Z&to=2026-0
   -H "Authorization: Bearer YOUR_TOKEN" | jq
 ```
 
+---
 
+### Состояние сервиса
+
+**Endpoint:** `GET /health`
+
+**Authorization:** `Bearer <token>` (обязательно)
+
+**Response:** `200 OK`
+
+```json
+{
+  "status": "healthy",
+  "version": "0.1.0",
+  "checks": {
+    "database": {
+      "status": "ok",
+      "message": "Connected, default domain: s.example.com"
+    },
+    "click_queue": {
+      "status": "ok",
+      "message": "Capacity: 10000"
+    }
+  }
+}
+```
+
+**Пример:**
+
+```bash
+curl "http://127.0.0.1:3000/health" \
+  -H "Authorization: Bearer YOUR_TOKEN" | jq
+```
+
+---
+
+### Список доменов
+
+**Endpoint:** `GET /domains`
+
+**Authorization:** `Bearer <token>` (обязательно)
+
+**Response:** `200 OK`
+
+```json
+{
+  "items": [
+    {
+      "domain": "s.example.com",
+      "is_default": true,
+      "is_active": true,
+      "description": "Default domain",
+      "created_at": "2026-01-17T08:22:13.685467Z",
+      "updated_at": "2026-01-17T08:22:13.685467Z"
+    }
+  ]
+}
+```
+
+**Пример:**
+
+```bash
+curl "http://127.0.0.1:3000/domains" \
+  -H "Authorization: Bearer YOUR_TOKEN" | jq
+```
 ---
 
 ## 🔐 Аутентификация
 
-Защищённые эндпоинты: `GET /stats`, `GET /stats/{code}`
+Защищённые эндпоинты:
+* `GET /stats`
+* `GET /stats/{code}`
+* `GET /health`
+* `GET /domains`
 
 **Формат заголовка:**
 

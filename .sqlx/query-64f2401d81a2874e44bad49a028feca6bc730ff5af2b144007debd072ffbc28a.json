@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n        WITH inserted AS (\n            INSERT INTO links (code, long_url, domain_id)\n            VALUES ($1, $2, $3)\n            RETURNING id, code, long_url, domain_id, created_at\n        )\n        SELECT\n            i.id,\n            i.code,\n            i.long_url,\n            d.domain,\n            i.created_at\n        FROM inserted i\n        LEFT JOIN domains d ON d.id = i.domain_id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "domain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "64f2401d81a2874e44bad49a028feca6bc730ff5af2b144007debd072ffbc28a"
+}

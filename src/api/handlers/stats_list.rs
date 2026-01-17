@@ -21,13 +21,16 @@ pub async fn stats_list_handler(
         .validate_and_get_offset_limit()
         .map_err(|e| AppError::bad_request(e, json!({})))?;
 
-    // Создаём фильтр
-    let filter = StatsFilter {
-        from_date: params.date_filter.from,
-        to_date: params.date_filter.to,
-        offset,
-        limit,
+    let domain_id = if let Some(domain_name) = &params.domain {
+        let domain = state.domain_service.get_domain(domain_name).await?;
+        Some(domain.id)
+    } else {
+        None
     };
+
+    let filter = StatsFilter::new(offset, limit)
+        .with_domain(domain_id)
+        .with_date_range(params.date_filter.from, params.date_filter.to);
 
     // Получаем данные и общее количество
     let (all_stats, total_items) = tokio::try_join!(
@@ -40,8 +43,9 @@ pub async fn stats_list_handler(
         .into_iter()
         .map(|stat| LinkStatsItem {
             code: stat.code,
+            domain: stat.domain,
             long_url: stat.long_url,
-            total_clicks: stat.total_clicks,
+            total: stat.total,
             created_at: stat.created_at,
         })
         .collect();
@@ -49,12 +53,12 @@ pub async fn stats_list_handler(
     let total_pages = ((total_items as f64) / (params.pagination.page_size as f64)).ceil() as u32;
 
     Ok(Json(StatsListResponse {
-        items,
         pagination: PaginationMeta {
             page: params.pagination.page,
             page_size: params.pagination.page_size,
             total_items,
             total_pages,
         },
+        items,
     }))
 }

@@ -1,0 +1,56 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                l.id,\n                l.code,\n                l.long_url,\n                l.created_at,\n                d.domain as \"domain?\",\n                COUNT(lc.id) as \"clicks!\"\n            FROM links l\n            LEFT JOIN link_clicks lc ON l.id = lc.link_id\n                AND ($1::timestamptz IS NULL OR lc.clicked_at >= $1)\n                AND ($2::timestamptz IS NULL OR lc.clicked_at <= $2)\n            LEFT JOIN domains d ON d.id = l.domain_id\n            WHERE ($5::bigint IS NULL OR l.domain_id = $5)\n            GROUP BY l.id, l.code, l.long_url, l.created_at, d.domain\n            ORDER BY l.created_at DESC\n            LIMIT $3 OFFSET $4\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 4,
+        "name": "domain?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 5,
+        "name": "clicks!",
+        "type_info": "Int8"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Timestamptz",
+        "Timestamptz",
+        "Int8",
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      null
+    ]
+  },
+  "hash": "33a27cff428c1bd06a8ccbe994ce8503b8442e29a3de17344a6c41724dd24399"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE domains SET is_default = FALSE",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": []
+  },
+  "hash": "ebe0990f681a75263ee35b8ef85bb4f43da7c7da38fc708442ab9aa110a7e878"
+}
