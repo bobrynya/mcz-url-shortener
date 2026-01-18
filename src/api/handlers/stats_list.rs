@@ -21,6 +21,9 @@ pub async fn stats_list_handler(
         .validate_and_get_offset_limit()
         .map_err(|e| AppError::bad_request(e, json!({})))?;
 
+    let page = params.pagination.page.unwrap_or(1);
+    let page_size = params.pagination.page_size.unwrap_or(25);
+
     let domain_id = if let Some(domain_name) = &params.domain {
         let domain = state.domain_service.get_domain(domain_name).await?;
         Some(domain.id)
@@ -50,12 +53,12 @@ pub async fn stats_list_handler(
         })
         .collect();
 
-    let total_pages = ((total_items as f64) / (params.pagination.page_size as f64)).ceil() as u32;
+    let total_pages = ((total_items as f64) / (page_size as f64)).ceil() as u32;
 
     Ok(Json(StatsListResponse {
         pagination: PaginationMeta {
-            page: params.pagination.page,
-            page_size: params.pagination.page_size,
+            page,
+            page_size,
             total_items,
             total_pages,
         },

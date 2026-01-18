@@ -1,35 +1,33 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
+use serde_with::{DisplayFromStr, serde_as};
 
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct PaginationParams {
-    #[serde(default = "default_page")]
-    pub page: u32,
-
-    #[serde(default = "default_page_size")]
-    pub page_size: u32,
-}
-
-fn default_page() -> u32 {
-    1
-}
-
-fn default_page_size() -> u32 {
-    25
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub page: Option<u32>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub page_size: Option<u32>,
 }
 
 impl PaginationParams {
     pub fn validate_and_get_offset_limit(&self) -> Result<(i64, i64), String> {
-        if self.page == 0 {
+        let page = self.page.unwrap_or(1);
+        let page_size = self.page_size.unwrap_or(25);
+
+        if page == 0 {
             return Err("Page must be greater than 0".to_string());
         }
 
-        if !(10..=50).contains(&self.page_size) {
+        if !(10..=50).contains(&page_size) {
             return Err("Page size must be between 10 and 50".to_string());
         }
 
-        let offset = ((self.page - 1) * self.page_size) as i64;
-        let limit = self.page_size as i64;
+        let offset = ((page - 1) * page_size) as i64;
+        let limit = page_size as i64;
 
         Ok((offset, limit))
     }

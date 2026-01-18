@@ -20,6 +20,9 @@ pub mod utils;
 pub mod config;
 pub mod server;
 
+pub mod routes;
+pub mod web;
+
 pub use error::AppError;
 pub use state::AppState;
 

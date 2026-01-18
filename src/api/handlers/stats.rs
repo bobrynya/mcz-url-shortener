@@ -23,6 +23,9 @@ pub async fn stats_handler(
         .validate_and_get_offset_limit()
         .map_err(|e| AppError::bad_request(e, json!({})))?;
 
+    let page = params.pagination.page.unwrap_or(1);
+    let page_size = params.pagination.page_size.unwrap_or(25);
+
     let domain_id = if let Some(domain_name) = &params.domain {
         let domain = state.domain_service.get_domain(domain_name).await?;
         Some(domain.id)
@@ -41,14 +44,13 @@ pub async fn stats_handler(
         .await?;
 
     // Вычисляем количество страниц
-    let total_pages =
-        ((detailed_stats.total as f64) / (params.pagination.page_size as f64)).ceil() as u32;
+    let total_pages = (detailed_stats.total as f64 / page_size as f64).ceil() as u32;
 
     // Преобразуем в DTO
     let response = StatsResponse {
         pagination: PaginationMeta {
-            page: params.pagination.page,
-            page_size: params.pagination.page_size,
+            page,
+            page_size,
             total_items: detailed_stats.total,
             total_pages,
         },

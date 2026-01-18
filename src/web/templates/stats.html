@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Статистика - {{ code }}</title>
+    <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { color: #333; }
+        .breadcrumb { font-size: 14px; color: #6b7280; margin-bottom: 10px; }
+        .breadcrumb a { color: #2563eb; text-decoration: none; }
+        .breadcrumb a:hover { text-decoration: underline; }
+
+        /* Статистика */
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 30px; }
+        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .stat-card h3 { font-size: 14px; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .stat-card .value { font-size: 28px; font-weight: bold; color: #2563eb; }
+        .stat-card .subvalue { font-size: 14px; color: #6b7280; margin-top: 4px; }
+
+        /* Информация о ссылке */
+        .link-info { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .link-info h2 { margin-bottom: 16px; color: #374151; }
+        .info-row { display: grid; grid-template-columns: 150px 1fr; gap: 12px; padding: 12px 0; border-bottom: 1px solid #e5e7eb; }
+        .info-row:last-child { border-bottom: none; }
+        .info-label { font-weight: 600; color: #6b7280; }
+        .info-value { color: #1f2937; word-break: break-all; }
+        .short-url { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+        .short-url a { color: #2563eb; text-decoration: none; }
+        .short-url a:hover { text-decoration: underline; }
+
+        /* Фильтры */
+        .filters { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .filters h2 { margin-bottom: 16px; color: #374151; font-size: 18px; }
+        .filters-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; align-items: end; }
+        .filter-group { display: flex; flex-direction: column; }
+        .filter-group label { font-size: 14px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+        .filter-group input, .filter-group select { padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; }
+        .filter-group input:focus, .filter-group select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); }
+
+        /* График */
+        .chart-container { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .chart-container h2 { margin-bottom: 16px; color: #374151; }
+
+        /* Таблица кликов */
+        .clicks-table { background: white; padding: 24px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .clicks-table h2 { margin-bottom: 16px; color: #374151; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+        th { background: #f9fafb; font-weight: 600; color: #374151; }
+        tbody tr:hover { background: #f9fafb; }
+        tbody tr:last-child td { border-bottom: none; }
+
+        .loading { text-align: center; padding: 40px; color: #666; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .error { background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #fecaca; }
+        .btn { padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; }
+        .btn:hover { background: #1d4ed8; }
+        .btn-sm { padding: 6px 12px; font-size: 13px; }
+        .btn-secondary { background: #6b7280; }
+        .btn-secondary:hover { background: #4b5563; }
+        .empty-state { text-align: center; padding: 40px; color: #999; background: white; border-radius: 8px; }
+        .pagination { display: flex; justify-content: center; gap: 8px; margin-top: 20px; }
+        .pagination button { padding: 8px 12px; border: 1px solid #d1d5db; background: white; border-radius: 6px; cursor: pointer; }
+        .pagination button:hover:not(:disabled) { background: #f3f4f6; }
+        .pagination button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .pagination button.active { background: #2563eb; color: white; border-color: #2563eb; }
+        .quick-filters { display: flex; gap: 8px; margin-top: 12px; }
+        .quick-filter-btn { padding: 6px 12px; background: #f3f4f6; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .quick-filter-btn:hover { background: #e5e7eb; }
+        .quick-filter-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
+    </style>
+</head>
+<body>
+<div class="container" x-data="statsPage('{{ code }}')" x-init="init()">
+    <div class="breadcrumb">
+        <a href="/dashboard">← Dashboard</a> / <a href="/dashboard/links">Все ссылки</a>
+    </div>
+
+    <div class="header">
+        <h1>📊 Статистика ссылки</h1>
+        <a href="/dashboard/links" class="btn">← К списку</a>
+    </div>
+
+    <template x-if="loading">
+        <div class="loading">⏳ Загрузка статистики...</div>
+    </template>
+
+    <template x-if="error">
+        <div class="error">
+            <strong>Ошибка:</strong> <span x-text="error"></span>
+        </div>
+    </template>
+
+    <template x-if="!loading && !error && stats">
+        <div>
+            <!-- Статистика -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>Всего кликов</h3>
+                    <div class="value" x-text="stats.total"></div>
+                </div>
+                <div class="stat-card">
+                    <h3>Уникальных IP</h3>
+                    <div class="value" x-text="uniqueIPs"></div>
+                    <div class="subvalue">По IP адресам</div>
+                </div>
+                <div class="stat-card">
+                    <h3>Последний клик</h3>
+                    <div class="value" style="font-size: 16px;" x-text="stats.items.length > 0 ? formatDate(stats.items[0].clicked_at) : 'Нет данных'"></div>
+                </div>
+                <div class="stat-card">
+                    <h3>Создана</h3>
+                    <div class="value" style="font-size: 16px;" x-text="formatDate(stats.created_at)"></div>
+                </div>
+            </div>
+
+            <!-- Информация о ссылке -->
+            <div class="link-info">
+                <h2>Информация о ссылке</h2>
+                <div class="info-row">
+                    <div class="info-label">Код:</div>
+                    <div class="info-value">
+                        <code x-text="stats.code"></code>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Короткая ссылка:</div>
+                    <div class="info-value">
+                        <div class="short-url">
+                            <a :href="shortUrl" target="_blank" x-text="shortUrl"></a>
+                            <button class="btn btn-sm" @click="copyToClipboard(shortUrl)">
+                                <span x-show="!copied">📋 Копировать</span>
+                                <span x-show="copied">✓ Скопировано</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Оригинальный URL:</div>
+                    <div class="info-value">
+                        <a :href="stats.long_url" target="_blank" x-text="stats.long_url"></a>
+                    </div>
+                </div>
+                <div class="info-row">
+                    <div class="info-label">Домен:</div>
+                    <div class="info-value" x-text="stats.domain"></div>
+                </div>
+            </div>
+
+            <!-- Фильтры -->
+            <div class="filters">
+                <h2>📅 Фильтры по дате</h2>
+                <div class="quick-filters">
+                    <button class="quick-filter-btn" :class="{ 'active': activeQuickFilter === 'all' }" @click="applyQuickFilter('all')">Все время</button>
+                    <button class="quick-filter-btn" :class="{ 'active': activeQuickFilter === 'today' }" @click="applyQuickFilter('today')">Сегодня</button>
+                    <button class="quick-filter-btn" :class="{ 'active': activeQuickFilter === 'week' }" @click="applyQuickFilter('week')">Неделя</button>
+                    <button class="quick-filter-btn" :class="{ 'active': activeQuickFilter === 'month' }" @click="applyQuickFilter('month')">Месяц</button>
+                    <button class="quick-filter-btn" :class="{ 'active': activeQuickFilter === 'custom' }" @click="activeQuickFilter = 'custom'">Свой период</button>
+                </div>
+
+                <div class="filters-row" style="margin-top: 16px;" x-show="activeQuickFilter === 'custom'">
+                    <div class="filter-group">
+                        <label for="from">От даты</label>
+                        <input
+                                type="date"
+                                id="from"
+                                x-model="filters.from"
+                        >
+                    </div>
+                    <div class="filter-group">
+                        <label for="to">До даты</label>
+                        <input
+                                type="date"
+                                id="to"
+                                x-model="filters.to"
+                        >
+                    </div>
+                    <div class="filter-group">
+                        <label for="page_size">На странице</label>
+                        <select
+                                id="page_size"
+                                x-model="filters.page_size"
+                        >
+                            <option value="10">10</option>
+                            <option value="25">25</option>
+                            <option value="50">50</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <button class="btn" @click="loadStats(1)" style="width: 100%;">Применить</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- График кликов -->
+            <div class="chart-container" x-show="stats.total > 0">
+                <h2>График кликов</h2>
+                <div id="clicksChart" style="width: 100%; height: 400px;"></div>
+            </div>
+
+            <!-- История кликов -->
+            <div class="clicks-table" x-show="stats.items.length > 0">
+                <h2>История кликов (страница <span x-text="currentPage"></span> из <span x-text="stats.pagination.total_pages"></span>)</h2>
+                <table>
+                    <thead>
+                    <tr>
+                        <th>Время</th>
+                        <th>IP адрес</th>
+                        <th>Реферер</th>
+                        <th>User Agent</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <template x-for="click in stats.items" :key="click.clicked_at">
+                        <tr>
+                            <td x-text="formatDateTime(click.clicked_at)"></td>
+                            <td><code x-text="click.ip || '—'"></code></td>
+                            <td x-text="click.referer || '—'" style="max-width: 200px; overflow: hidden; text-overflow: ellipsis;" :title="click.referer"></td>
+                            <td x-text="click.user_agent || '—'" style="max-width: 300px; overflow: hidden; text-overflow: ellipsis;" :title="click.user_agent"></td>
+                        </tr>
+                    </template>
+                    </tbody>
+                </table>
+
+                <div class="pagination" x-show="stats.pagination.total_pages > 1">
+                    <button @click="loadStats(1)" :disabled="currentPage === 1">Первая</button>
+                    <button @click="loadStats(currentPage - 1)" :disabled="currentPage === 1">← Назад</button>
+                    <template x-for="page in visiblePages" :key="page">
+                        <button
+                                @click="loadStats(page)"
+                                :class="{ 'active': page === currentPage }"
+                                x-text="page"
+                        ></button>
+                    </template>
+                    <button @click="loadStats(currentPage + 1)" :disabled="currentPage === stats.pagination.total_pages">Вперёд →</button>
+                    <button @click="loadStats(stats.pagination.total_pages)" :disabled="currentPage === stats.pagination.total_pages">Последняя</button>
+                </div>
+            </div>
+
+            <template x-if="stats.total === 0">
+                <div class="empty-state">
+                    <h3>📭 Пока нет кликов</h3>
+                    <p>Поделитесь ссылкой, чтобы увидеть статистику</p>
+                </div>
+            </template>
+        </div>
+    </template>
+</div>
+
+<script>
+    function statsPage(code) {
+        return {
+            code: code,
+            stats: null,
+            loading: true,
+            error: null,
+            copied: false,
+            chartData: [],
+            echartsInstance: null,
+            currentPage: 1,
+            activeQuickFilter: 'all',
+            filters: {
+                from: '',
+                to: '',
+                page_size: 25
+            },
+
+            get shortUrl() {
+                if (!this.stats) return '';
+                return `https://${this.stats.domain}/${this.stats.code}`;
+            },
+
+            get uniqueIPs() {
+                if (!this.stats || !this.stats.items) return 0;
+                const ips = new Set(this.stats.items.map(item => item.ip).filter(ip => ip));
+                return ips.size;
+            },
+
+            get visiblePages() {
+                if (!this.stats) return [];
+                const total = this.stats.pagination.total_pages;
+                const current = this.currentPage;
+                const pages = [];
+
+                let start = Math.max(1, current - 3);
+                let end = Math.min(total, current + 3);
+
+                for (let i = start; i <= end; i++) {
+                    pages.push(i);
+                }
+
+                return pages;
+            },
+
+            async init() {
+                await this.loadStats(1);
+            },
+
+            applyQuickFilter(filter) {
+                this.activeQuickFilter = filter;
+                const now = new Date();
+
+                switch(filter) {
+                    case 'all':
+                        this.filters.from = '';
+                        this.filters.to = '';
+                        break;
+                    case 'today':
+                        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        this.filters.from = today.toISOString().split('T')[0];
+                        this.filters.to = now.toISOString().split('T')[0];
+                        break;
+                    case 'week':
+                        const weekAgo = new Date(now);
+                        weekAgo.setDate(weekAgo.getDate() - 7);
+                        this.filters.from = weekAgo.toISOString().split('T')[0];
+                        this.filters.to = now.toISOString().split('T')[0];
+                        break;
+                    case 'month':
+                        const monthAgo = new Date(now);
+                        monthAgo.setMonth(monthAgo.getMonth() - 1);
+                        this.filters.from = monthAgo.toISOString().split('T')[0];
+                        this.filters.to = now.toISOString().split('T')[0];
+                        break;
+                }
+
+                if (filter !== 'custom') {
+                    this.loadStats(1);
+                }
+            },
+
+            async loadStats(page = 1) {
+                try {
+                    this.loading = true;
+                    this.error = null;
+
+                    const params = new URLSearchParams({
+                        page: page.toString(),
+                        page_size: this.filters.page_size.toString()
+                    });
+
+                    if (this.filters.from) {
+                        const fromDate = new Date(this.filters.from);
+                        params.append('from', fromDate.toISOString());
+                    }
+
+                    if (this.filters.to) {
+                        const toDate = new Date(this.filters.to);
+                        toDate.setHours(23, 59, 59, 999);
+                        params.append('to', toDate.toISOString());
+                    }
+
+                    const response = await fetch(`/api/stats/${this.code}?${params}`, {
+                        headers: {
+                            'Authorization': 'Bearer <token>'
+                        }
+                    });
+
+                    if (!response.ok) {
+                        if (response.status === 404) {
+                            throw new Error('Ссылка не найдена');
+                        }
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+
+                    this.stats = await response.json();
+                    this.currentPage = page;
+
+                    if (page === 1) {
+                        this.buildChartData();
+                        this.$nextTick(() => {
+                            if (this.chartData.length > 0) {
+                                this.renderChart();
+                            }
+                        });
+                    }
+
+                } catch (err) {
+                    this.error = err.message;
+                    console.error('Ошибка загрузки статистики:', err);
+                } finally {
+                    this.loading = false;
+                }
+            },
+
+            buildChartData() {
+                if (!this.stats || !this.stats.items.length) {
+                    this.chartData = [];
+                    return;
+                }
+
+                const clicksByDate = {};
+                this.stats.items.forEach(click => {
+                    const date = click.clicked_at.split('T')[0];
+                    clicksByDate[date] = (clicksByDate[date] || 0) + 1;
+                });
+
+                let startDate, endDate;
+
+                if (this.filters.from && this.filters.to) {
+                    startDate = new Date(this.filters.from);
+                    endDate = new Date(this.filters.to);
+                } else {
+                    endDate = new Date();
+                    startDate = new Date();
+                    startDate.setDate(startDate.getDate() - 29);
+                }
+
+                this.chartData = [];
+                const currentDate = new Date(startDate);
+
+                while (currentDate <= endDate) {
+                    const dateStr = currentDate.toISOString().split('T')[0];
+                    this.chartData.push({
+                        date: dateStr,
+                        clicks: clicksByDate[dateStr] || 0
+                    });
+                    currentDate.setDate(currentDate.getDate() + 1);
+                }
+            },
+
+            renderChart() {
+                const chartContainer = document.getElementById('clicksChart');
+                if (!chartContainer) {
+                    console.error('Chart container not found');
+                    return;
+                }
+
+                // Инициализируем ECharts
+                if (this.echartsInstance) {
+                    this.echartsInstance.dispose();
+                }
+
+                this.echartsInstance = echarts.init(chartContainer);
+
+                const option = {
+                    tooltip: {
+                        trigger: 'axis',
+                        backgroundColor: 'rgba(50, 50, 50, 0.9)',
+                        borderColor: '#ccc',
+                        textStyle: { color: '#fff' }
+                    },
+                    grid: {
+                        left: '10%',
+                        right: '10%',
+                        top: '10%',
+                        bottom: '10%',
+                        containLabel: true
+                    },
+                    xAxis: {
+                        type: 'category',
+                        data: this.chartData.map(d => {
+                            const date = new Date(d.date);
+                            return date.toLocaleDateString('ru-RU', { month: 'short', day: 'numeric' });
+                        }),
+                        boundaryGap: false
+                    },
+                    yAxis: {
+                        type: 'value',
+                        minInterval: 1
+                    },
+                    series: [
+                        {
+                            name: 'Клики',
+                            type: 'line',
+                            data: this.chartData.map(d => d.clicks),
+                            smooth: true,
+                            itemStyle: {
+                                color: '#2563eb'
+                            },
+                            areaStyle: {
+                                color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                                    {
+                                        offset: 0,
+                                        color: 'rgba(37, 99, 235, 0.3)'
+                                    },
+                                    {
+                                        offset: 1,
+                                        color: 'rgba(37, 99, 235, 0.1)'
+                                    }
+                                ])
+                            },
+                            lineStyle: {
+                                color: '#2563eb',
+                                width: 2
+                            }
+                        }
+                    ]
+                };
+
+                this.echartsInstance.setOption(option);
+
+                // Адаптивность
+                window.addEventListener('resize', () => {
+                    if (this.echartsInstance) {
+                        this.echartsInstance.resize();
+                    }
+                });
+            },
+
+            async copyToClipboard(text) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    this.copied = true;
+                    setTimeout(() => {
+                        this.copied = false;
+                    }, 2000);
+                } catch (err) {
+                    console.error('Ошибка копирования:', err);
+                }
+            },
+
+            formatDate(dateStr) {
+                const date = new Date(dateStr);
+                return date.toLocaleDateString('ru-RU', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                });
+            },
+
+            formatDateTime(dateStr) {
+                const date = new Date(dateStr);
+                return date.toLocaleString('ru-RU', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+            }
+        };
+    }
+</script>
+</body>
+</html>
