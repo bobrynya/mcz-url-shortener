@@ -11,8 +11,10 @@ use axum::{
     Router, middleware,
     routing::{get, post},
 };
+use tower::Layer;
+use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 
-pub fn app_router(state: AppState) -> Router {
+pub fn app_router(state: AppState) -> NormalizePath<Router> {
     // Защищённые маршруты
     let protected_routes = Router::new()
         .route("/health", get(health_handler))
@@ -28,9 +30,12 @@ pub fn app_router(state: AppState) -> Router {
         .route("/{code}", get(redirect_handler))
         .layer(rate_limit::layer());
 
-    Router::new()
+    let router = Router::new()
         .merge(protected_routes)
         .merge(public_routes)
         .with_state(state)
-        .layer(tracing::layer())
+        .layer(tracing::layer());
+
+    // Убираем trailing slash
+    NormalizePathLayer::trim_trailing_slash().layer(router)
 }

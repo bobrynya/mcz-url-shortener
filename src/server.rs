@@ -1,10 +1,12 @@
+use crate::api::routes::app_router;
 use crate::config::Config;
 use crate::domain::click_worker::run_click_worker;
 use crate::infrastructure::persistence::PgStatsRepository;
-use crate::api::routes::app_router;
 use crate::state::AppState;
 
 use anyhow::Result;
+use axum::ServiceExt;
+use axum::extract::Request;
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -37,7 +39,7 @@ pub async fn run(config: Config) -> Result<()> {
 
     axum::serve(
         listener,
-        app.into_make_service_with_connect_info::<SocketAddr>(),
+        ServiceExt::<Request>::into_make_service_with_connect_info::<SocketAddr>(app),
     )
     .await?;
 
