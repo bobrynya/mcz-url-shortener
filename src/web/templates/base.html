@@ -4,51 +4,29 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}MCZ URL Shortener{% endblock %}</title>
-    <script src="https://unpkg.com/alpinejs@3.13.3/dist/cdn.min.js" defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; background: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h1 { color: #333; }
-        .breadcrumb { font-size: 14px; color: #6b7280; margin-bottom: 10px; }
-        .breadcrumb a { color: #2563eb; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
 
-        .btn { padding: 8px 16px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 14px; text-decoration: none; display: inline-block; }
-        .btn:hover { background: #1d4ed8; }
-        .btn-sm { padding: 6px 12px; font-size: 13px; }
-        .btn-secondary { background: #6b7280; }
-        .btn-secondary:hover { background: #4b5563; }
+    <!-- Основные стили -->
+    <link rel="stylesheet" href="/static/css/styles.css">
 
-        .loading { text-align: center; padding: 40px; color: #666; background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .error { background: #fee2e2; color: #991b1b; padding: 15px; border-radius: 8px; margin: 20px 0; border: 1px solid #fecaca; }
-
-        {% block extra_styles %}{% endblock %}
-    </style>
+    <!-- Дополнительные стили для конкретных страниц -->
+    {% block extra_styles %}{% endblock %}
 </head>
 <body>
-<!-- Навигация -->
-<nav style="background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin: -20px -20px 20px -20px; padding: 16px 20px;">
-    <div style="max-width: 1200px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center;">
-        <div style="display: flex; gap: 24px; align-items: center;">
-            <a href="/" style="text-decoration: none; font-size: 18px; font-weight: bold; color: #2563eb;">
-                🔗 MCZ Shortener
-            </a>
-            <a href="/" style="text-decoration: none; color: #374151; font-size: 14px;">Dashboard</a>
-            <a href="/links" style="text-decoration: none; color: #374151; font-size: 14px;">Все ссылки</a>
-        </div>
-        <div style="font-size: 14px; color: #6b7280;">
-            Авторизован
-        </div>
-    </div>
-</nav>
-
 <div class="container">
+    <!-- Навигация/Хлебные крошки -->
+    {% block breadcrumb %}{% endblock %}
+
+    <!-- Заголовок страницы -->
+    {% block header %}{% endblock %}
+
+    <!-- Основной контент -->
     {% block content %}{% endblock %}
 </div>
 
+<!-- Основная JavaScript библиотека -->
+<script src="/static/js/mcz-shortener.js"></script>
+
+<!-- Дополнительные скрипты для конкретных страниц -->
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

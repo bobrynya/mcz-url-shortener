@@ -1,3 +1,6 @@
+/* ============================================
+   БАЗОВЫЕ СТИЛИ
+   ============================================ */
 * {
     margin: 0;
     padding: 0;
@@ -6,51 +9,625 @@
 
 body {
     font-family: system-ui, -apple-system, sans-serif;
-    line-height: 1.6;
-    color: #333;
+    padding: 20px;
     background: #f5f5f5;
 }
 
-header {
-    background: #2c3e50;
-    color: white;
-    padding: 1rem;
-    text-align: center;
-}
-
-main {
-    max-width: 1200px;
-    margin: 2rem auto;
-    padding: 0 1rem;
-}
-
 .container {
-    background: white;
-    padding: 2rem;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
-button {
-    background: #3498db;
+/* ============================================
+   ЗАГОЛОВКИ И НАВИГАЦИЯ
+   ============================================ */
+h1 {
+    color: #333;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.breadcrumb {
+    font-size: 14px;
+    color: #6b7280;
+    margin-bottom: 10px;
+}
+
+.breadcrumb a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.breadcrumb a:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   КАРТОЧКИ И БЛОКИ
+   ============================================ */
+.card {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+/* ============================================
+   ИНФОРМАЦИЯ О ССЫЛКЕ
+   ============================================ */
+.link-info {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.link-info h2 {
+    margin-bottom: 16px;
+    color: #374151;
+}
+
+.info-row {
+    display: grid;
+    grid-template-columns: 150px 1fr;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    font-weight: 600;
+    color: #6b7280;
+}
+
+.info-value {
+    color: #1f2937;
+    word-break: break-all;
+}
+
+.short-url {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.short-url a {
+    color: #2563eb;
+    text-decoration: none;
+}
+
+.short-url a:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   ФОРМЫ И ИНПУТЫ
+   ============================================ */
+.form-section {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.form-section h2 {
+    margin-bottom: 16px;
+    color: #374151;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #374151;
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.form-group small {
+    display: block;
+    margin-top: 4px;
+    color: #6b7280;
+    font-size: 13px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+/* ============================================
+   МНОЖЕСТВЕННЫЕ ПОЛЯ ССЫЛОК (НОВОЕ)
+   ============================================ */
+.link-field {
+    background: #f9fafb;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.link-field-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.link-field-header h3 {
+    font-size: 16px;
+    color: #374151;
+    margin: 0;
+}
+
+.link-field-content {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.form-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+/* ============================================
+   ФИЛЬТРЫ
+   ============================================ */
+.filters {
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.filters h2 {
+    margin-bottom: 16px;
+    color: #374151;
+    font-size: 18px;
+}
+
+.filters-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    align-items: end;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.filter-group label {
+    font-size: 14px;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 6px;
+}
+
+.filter-group input,
+.filter-group select {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+    outline: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.filter-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.quick-filters {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.quick-filter-btn {
+    padding: 8px 16px;
+    background: #f3f4f6;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.quick-filter-btn:hover {
+    background: #e5e7eb;
+}
+
+.quick-filter-btn.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+/* ============================================
+   КНОПКИ
+   ============================================ */
+.btn {
+    padding: 8px 16px;
+    background: #2563eb;
     color: white;
     border: none;
-    padding: 0.5rem 1rem;
-    border-radius: 4px;
+    border-radius: 6px;
     cursor: pointer;
-    font-size: 1rem;
+    font-size: 14px;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.2s;
 }
 
-button:hover {
-    background: #2980b9;
+.btn:hover {
+    background: #1d4ed8;
 }
 
-#result {
-    margin-top: 1rem;
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
 }
 
-footer {
+.btn-secondary {
+    background: #6b7280;
+}
+
+.btn-secondary:hover {
+    background: #4b5563;
+}
+
+.btn-danger {
+    background: #ef4444;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* ============================================
+   ТАБЛИЦЫ
+   ============================================ */
+.table-container {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+    overflow-x: auto;
+}
+
+.table-container h2 {
+    margin-bottom: 16px;
+    color: #374151;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+th,
+td {
+    padding: 12px;
+    text-align: left;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 13px;
+}
+
+th {
+    background: #f9fafb;
+    font-weight: 600;
+    color: #374151;
+}
+
+tbody tr:hover {
+    background: #f9fafb;
+}
+
+tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ============================================
+   ПАГИНАЦИЯ
+   ============================================ */
+.pagination {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 20px;
+    flex-wrap: wrap;
+}
+
+.pagination button {
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: #f3f4f6;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination button.active {
+    background: #2563eb;
+    color: white;
+    border-color: #2563eb;
+}
+
+.pagination-info {
     text-align: center;
-    padding: 2rem;
+    margin-top: 12px;
+    color: #6b7280;
+    font-size: 14px;
+}
+
+/* ============================================
+   РЕЗУЛЬТАТЫ СОЗДАНИЯ (НОВОЕ)
+   ============================================ */
+.result {
+    background: white;
+    padding: 24px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    margin-bottom: 20px;
+}
+
+.result h2 {
+    margin-bottom: 16px;
+    color: #10b981;
+}
+
+.results-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.result-item {
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+}
+
+.result-item.result-success {
+    background: #f0fdf4;
+    border-color: #86efac;
+}
+
+.result-item.result-error {
+    background: #fef2f2;
+    border-color: #fecaca;
+}
+
+.result-url-display {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.result-icon {
+    font-size: 20px;
+    font-weight: bold;
+}
+
+.result-success .result-icon {
+    color: #10b981;
+}
+
+.result-error .result-icon {
+    color: #ef4444;
+}
+
+.result-long-url {
+    color: #374151;
+    word-break: break-all;
+    font-size: 14px;
+}
+
+.result-short {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    padding: 12px;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    flex-wrap: wrap;
+}
+
+.result-short input {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 14px;
+    background: #f9fafb;
+}
+
+.result-message {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 6px;
+}
+
+.result-message.error {
+    background: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #fecaca;
+}
+
+.result-message small {
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+    opacity: 0.8;
+}
+
+/* ============================================
+   СОСТОЯНИЯ (LOADING, ERROR, EMPTY)
+   ============================================ */
+.loading {
+    text-align: center;
+    padding: 40px;
     color: #666;
+    background: white;
+    border-radius: 8px;
+}
+
+.error {
+    background: #fee2e2;
+    color: #991b1b;
+    padding: 15px;
+    border-radius: 8px;
+    margin: 20px 0;
+    border: 1px solid #fecaca;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 40px;
+    color: #999;
+    background: white;
+    border-radius: 8px;
+}
+
+.empty-state h3 {
+    font-size: 18px;
+    margin-bottom: 8px;
+}
+
+.empty-state p {
+    font-size: 14px;
+}
+
+/* ============================================
+   ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ
+   ============================================ */
+.text-center {
+    text-align: center;
+}
+
+.mt-20 {
+    margin-top: 20px;
+}
+
+.mb-20 {
+    margin-bottom: 20px;
+}
+
+code {
+    font-family: monospace;
+    background: #f3f4f6;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+
+/* ============================================
+   RESPONSIVE
+   ============================================ */
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .filters-row {
+        grid-template-columns: 1fr;
+    }
+
+    .info-row {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .result-short {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .result-short input {
+        width: 100%;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .form-actions {
+        flex-direction: column;
+    }
+
+    .actions {
+        flex-wrap: wrap;
+    }
 }

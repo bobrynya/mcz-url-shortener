@@ -22,7 +22,7 @@ impl PaginationParams {
             return Err("Page must be greater than 0".to_string());
         }
 
-        if !(10..=50).contains(&page_size) {
+        if !(10..=1000).contains(&page_size) {
             return Err("Page size must be between 10 and 50".to_string());
         }
 
