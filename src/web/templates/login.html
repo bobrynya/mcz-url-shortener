@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+
+{% block title %}Вход - MCZ URL Shortener{% endblock %}
+
+{% block header %}{% endblock %}
+
+{% block content %}
+<div class="login-card">
+    <h1>🔐 Вход в Dashboard</h1>
+
+    <form id="loginForm">
+        <div class="form-group">
+            <label for="token">API Token</label>
+            <input type="password"
+                   id="token"
+                   name="token"
+                   required
+                   placeholder="Введите ваш токен"
+                   autocomplete="off">
+            <small>Токен можно получить у администратора</small>
+        </div>
+
+        <button type="submit" class="btn">
+            Войти
+        </button>
+    </form>
+
+    <div id="error" style="display: none;" class="error"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.body.classList.add('login-page');
+
+    document.addEventListener('DOMContentLoaded', () => {
+        MCZLogin.init();
+    });
+</script>
+{% endblock %}

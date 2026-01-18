@@ -17,7 +17,19 @@
     {% block breadcrumb %}{% endblock %}
 
     <!-- Заголовок страницы -->
-    {% block header %}{% endblock %}
+    {% block header %}
+    <!-- Заголовок по умолчанию с кнопкой выхода -->
+    <div class="header">
+        <h1>MCZ URL Shortener</h1>
+        <div class="header-actions">
+            <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+            <a href="/dashboard/links" class="btn btn-secondary">Все ссылки</a>
+            <button onclick="MCZAuth.logout()" class="btn btn-danger btn-sm">
+                🚪 Выход
+            </button>
+        </div>
+    </div>
+    {% endblock %}
 
     <!-- Основной контент -->
     {% block content %}{% endblock %}

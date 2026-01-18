@@ -10,18 +10,24 @@
 
 {% block header %}
 <div class="header">
-    <h1>Статистика ссылки</h1>
-    <a href="/dashboard/links" class="btn">← К списку ссылок</a>
+    <h1>📊 Статистика ссылки</h1>
+    <div class="header-actions">
+        <a href="/dashboard/links" class="btn btn-secondary">← К списку</a>
+        <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
+        <button onclick="MCZAuth.logout()" class="btn btn-danger btn-sm">
+            🚪 Выход
+        </button>
+    </div>
 </div>
 {% endblock %}
 
 {% block extra_styles %}
-<script src="https://cdn.jsdelivr.net/npm/echarts@6.0/dist/echarts.min.js"></script>
+<script src="/static/js/echarts.min.js"></script>
 {% endblock %}
 
 {% block content %}
 <!-- Информация о ссылке -->
-<div class="link-info">
+<div class="card">
     <h2>Информация о ссылке</h2>
     <div class="info-row">
         <div class="info-label">Короткая ссылка:</div>
@@ -53,7 +59,7 @@
 </div>
 
 <!-- Фильтры по времени -->
-<div class="filters">
+<div class="card">
     <h2>Период статистики</h2>
     <div class="quick-filters">
         <button class="quick-filter-btn active" data-period="all" onclick="MCZStats.setQuickFilter('all')">
@@ -91,13 +97,13 @@
 </div>
 
 <!-- График кликов по времени -->
-<div class="chart-container">
+<div class="card">
     <h2>Клики по времени</h2>
-    <div id="clicksChart" style="height: 400px;"></div>
+    <div id="clicksChart" style="min-height: 400px;"></div>
 </div>
 
 <!-- Таблица кликов -->
-<div class="table-container">
+<div class="card">
     <h2>Детальная история переходов</h2>
     <div id="clicksTable">
         <div class="loading">Загрузка...</div>
@@ -110,16 +116,9 @@
 
 {% block extra_scripts %}
 <script>
-    // Инициализация Stats при загрузке страницы
     document.addEventListener('DOMContentLoaded', () => {
         const code = '{{ code }}';
-
-        if (code) {
-            MCZStats.init(code);
-        } else {
-            alert('Ошибка: не указан код ссылки');
-            window.location.href = '/dashboard/links';
-        }
+        MCZStats.init(code);
     });
 </script>
 {% endblock %}

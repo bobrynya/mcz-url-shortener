@@ -43,5 +43,5 @@ pub async fn redirect_handler(
     let _ = state.click_sender.try_send(click_event);
 
     // 5. Редирект
-    Ok(Redirect::permanent(&link.long_url))
+    Ok(Redirect::temporary(&link.long_url))
 }

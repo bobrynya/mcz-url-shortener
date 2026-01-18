@@ -631,3 +631,66 @@ code {
         flex-wrap: wrap;
     }
 }
+
+/* ============================================
+   LOGIN PAGE
+   ============================================ */
+
+/* Применяется только к странице логина */
+body.login-page {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+body.login-page .container {
+    max-width: 400px;
+    width: 100%;
+    margin: 0 20px;
+}
+
+.login-card {
+    background: white;
+    padding: 40px;
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+}
+
+.login-card h1 {
+    text-align: center;
+    margin-bottom: 24px;
+    color: #333;
+}
+
+.login-card .form-group {
+    margin-bottom: 20px;
+}
+
+.login-card .btn {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.login-card .error {
+    margin-top: 16px;
+}
+
+/* ============================================
+   HEADER ACTIONS
+   ============================================ */
+
+.header-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.btn-danger {
+    background: #ef4444;
+}
+
+.btn-danger:hover {
+    background: #dc2626;
+}

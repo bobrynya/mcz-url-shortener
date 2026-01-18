@@ -1,5 +1,5 @@
 use crate::api::handlers::{
-    domain_list_handler, health_handler, redirect_handler, shorten_handler, stats_handler,
+    domain_list_handler, health_handler, shorten_handler, stats_handler,
     stats_list_handler,
 };
 use crate::state::AppState;
@@ -21,5 +21,4 @@ pub fn protected_routes() -> Router<AppState> {
 pub fn public_routes() -> Router<AppState> {
     Router::new()
         .route("/shorten", post(shorten_handler))
-        .route("/{code}", get(redirect_handler))
 }

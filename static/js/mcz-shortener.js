@@ -3,6 +3,40 @@
  * Библиотека для работы с сокращателем ссылок
  */
 
+/**
+ * ============================================
+ * AUTH MODULE
+ * ============================================
+ */
+
+let MCZAuth = {
+    /**
+     * Получение токена из cookie
+     */
+    getToken() {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+            const [name, value] = cookie.trim().split('=');
+            if (name === 'mcz_token') {
+                return value;
+            }
+        }
+        return null;
+    },
+
+    /**
+     * Выход из системы
+     */
+    logout() {
+        // Удаляем cookie
+        document.cookie = 'mcz_token=; path=/; max-age=0';
+
+        // Редирект на login
+        window.location.href = '/dashboard/login';
+    }
+};
+
+
 // ============================================
 // UTILITY FUNCTIONS (Утилитарные функции)
 // ============================================
@@ -58,7 +92,7 @@ const MCZUtils = {
         try {
             await navigator.clipboard.writeText(text);
             const originalText = button.textContent;
-            button.textContent = '✓ Скопировано';
+            button.textContent = '✔';
             button.style.background = '#10b981';
 
             setTimeout(() => {
@@ -111,25 +145,32 @@ const MCZAPI = {
      * @returns {Promise} Промис с данными
      */
     async request(endpoint, options = {}) {
-        try {
-            const response = await fetch(endpoint, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer',
-                    ...options.headers
-                },
-                ...options
-            });
+        const token = MCZAuth.getToken();
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+        const response = await fetch(endpoint, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': token ? `Bearer ${token}` : '',
+                ...options.headers
+            },
+            ...options
+        });
 
-            return await response.json();
-        } catch (error) {
+        // Если 401 - токен невалиден
+        if (response.status === 401) {
+            alert('Сессия истекла. Необходимо войти заново.');
+            MCZAuth.logout();
+            return null;
+        }
+
+        // Если другая ошибка - бросаем исключение
+        if (!response.ok) {
+            const error = new Error(`HTTP error! status: ${response.status}`);
             console.error('API Error:', error);
             throw error;
         }
+
+        return await response.json();
     },
 
     /**
@@ -226,7 +267,7 @@ const MCZDashboard = {
                 return;
             }
 
-            const html = `
+            container.innerHTML = `
                 <table>
                     <thead>
                         <tr>
@@ -265,8 +306,6 @@ const MCZDashboard = {
                     </tbody>
                 </table>
             `;
-
-            container.innerHTML = html;
         } catch (error) {
             MCZUtils.showError('Ошибка загрузки ссылок: ' + error.message, container);
         }
@@ -280,7 +319,6 @@ const MCZDashboard = {
         const fieldId = Date.now();
         this.linkFields.push(fieldId);
 
-        const defaultDomain = this.domains.find(d => d.is_default)?.domain || '';
         const domainOptions = this.domains
             .filter(d => d.is_active)
             .map(d => `<option value="${d.domain}" ${d.is_default ? 'selected' : ''}>${d.domain}</option>`)
@@ -468,7 +506,7 @@ const MCZDashboard = {
 
             // Если есть успешные, обновляем список
             if (result.summary.successful > 0) {
-                this.loadRecentLinks();
+                await this.loadRecentLinks();
             }
 
         } catch (error) {
@@ -484,7 +522,7 @@ const MCZDashboard = {
      */
     async init() {
         await this.loadDomains();
-        this.loadRecentLinks();
+        await this.loadRecentLinks();
 
         // Добавляем первое поле
         this.addLinkField();
@@ -573,7 +611,7 @@ const MCZLinks = {
 
             this.state.totalPages = data.pagination.total_pages || 1;
 
-            const html = `
+            container.innerHTML = `
                 <table>
                     <thead>
                         <tr>
@@ -615,8 +653,6 @@ const MCZLinks = {
                     Показано ${data.items.length} из ${data.pagination.total_items} ссылок
                 </div>
             `;
-
-            container.innerHTML = html;
             this.renderPagination();
 
         } catch (error) {
@@ -627,9 +663,9 @@ const MCZLinks = {
     /**
      * Копирование ссылки
      */
-    copyLink(domain, code, button) {
+    async copyLink(domain, code, button) {
         const url = `https://${domain}/${code}`;
-        MCZUtils.copyToClipboard(url, button);
+        await MCZUtils.copyToClipboard(url, button);
     },
 
     /**
@@ -668,15 +704,15 @@ const MCZLinks = {
     /**
      * Переход на страницу
      */
-    goToPage(page) {
+    async goToPage(page) {
         this.state.currentPage = page;
-        this.loadLinks();
+        await this.loadLinks();
     },
 
     /**
      * Применение фильтров
      */
-    applyFilters() {
+    async applyFilters() {
         const pageSize = document.getElementById('pageSizeSelect')?.value || 25;
         const fromDate = document.getElementById('fromDate')?.value || '';
         const toDate = document.getElementById('toDate')?.value || '';
@@ -688,17 +724,17 @@ const MCZLinks = {
         this.state.selectedDomain = domain;
         this.state.currentPage = 1;
 
-        this.loadLinks();
+        await this.loadLinks();
     },
 
     /**
      * Сброс фильтров
      */
-    resetFilters() {
+    async resetFilters() {
         document.getElementById('fromDate').value = '';
         document.getElementById('toDate').value = '';
         document.getElementById('domainFilter').value = '';
-        this.applyFilters();
+        await this.applyFilters();
     },
 
     /**
@@ -706,7 +742,7 @@ const MCZLinks = {
      */
     async init() {
         await this.loadDomains();
-        this.loadLinks();
+        await this.loadLinks();
 
         // Обработчики фильтров
         const pageSizeSelect = document.getElementById('pageSizeSelect');
@@ -746,7 +782,7 @@ const MCZStats = {
     /**
      * Установка быстрого фильтра
      */
-    setQuickFilter(period) {
+    async setQuickFilter(period) {
         this.state.currentPeriod = period;
 
         // Обновляем активную кнопку
@@ -783,7 +819,7 @@ const MCZStats = {
         this.state.toDate = now.toISOString();
         this.state.currentPage = 1;
 
-        this.loadLinkStats();
+        await this.loadLinkStats();
     },
 
     /**
@@ -808,7 +844,7 @@ const MCZStats = {
     /**
      * Применить произвольный период
      */
-    applyCustomPeriod() {
+    async applyCustomPeriod() {
         const fromInput = document.getElementById('statsFromDate');
         const toInput = document.getElementById('statsToDate');
 
@@ -825,7 +861,7 @@ const MCZStats = {
         this.state.currentPeriod = 'custom';
         this.state.currentPage = 1;
 
-        this.loadLinkStats();
+        await this.loadLinkStats();
     },
 
     /**
@@ -956,37 +992,23 @@ const MCZStats = {
         }
     },
 
-    /**
-     * Получение всех кликов для статистики (без пагинации)
-     * @param {string} code - Короткий код ссылки
-     * @param {object} params - Параметры (from, to)
-     * @returns {Promise} Промис со всеми кликами
-     */
-    async getAllClicksForChart(code, params = {}) {
-        const queryParams = new URLSearchParams();
-
-        // Берем большой page_size чтобы получить все данные
-        queryParams.append('page_size', '1000');
-        queryParams.append('page', '1');
-
-        if (params.from) queryParams.append('from', params.from);
-        if (params.to) queryParams.append('to', params.to);
-
-        const query = queryParams.toString();
-        return this.request(`/api/stats/${code}${query ? '?' + query : ''}`);
-    },
-
 
     /**
-     * Отрисовка графика кликов (используем this.chartData)
+     * Отрисовка графика кликов (ECharts)
      */
     renderClicksChart() {
         const chartDom = document.getElementById('clicksChart');
 
         if (!this.chartData || this.chartData.length === 0) {
-            chartDom.innerHTML = '<div class="empty-state"><p>Нет данных для отображения графика</p></div>';
+            // Если нет данных - скрываем контейнер графика
+            chartDom.innerHTML = '<p style="text-align: center; color: #999; padding: 20px;">Нет данных для отображения графика</p>';
+            chartDom.style.minHeight = 'auto'; // Убираем минимальную высоту
             return;
         }
+
+        // Восстанавливаем высоту если были данные
+        chartDom.style.minHeight = '400px';
+        chartDom.innerHTML = ''; // Очищаем предыдущее содержимое
 
         // Уничтожаем предыдущий график если есть
         if (this.chart) {
@@ -1004,10 +1026,10 @@ const MCZStats = {
                 textStyle: { color: '#fff' }
             },
             grid: {
-                left: '50px',
-                right: '20px',
-                top: '20px',
-                bottom: '50px',
+                left: '3%',
+                right: '3%',
+                top: '5%',
+                bottom: '10%',
                 containLabel: true
             },
             xAxis: {
@@ -1075,7 +1097,7 @@ const MCZStats = {
             return;
         }
 
-        const html = `
+        container.innerHTML = `
             <table>
                 <thead>
                     <tr>
@@ -1106,8 +1128,6 @@ const MCZStats = {
                 Показано ${data.items.length} из ${data.pagination.total_items} кликов за выбранный период
             </div>
         `;
-
-        container.innerHTML = html;
     },
 
     /**
@@ -1143,27 +1163,86 @@ const MCZStats = {
     /**
      * Переход на страницу
      */
-    goToPage(page) {
+    async goToPage(page) {
         this.state.currentPage = page;
-        this.loadLinkStats();
+        await this.loadLinkStats();
     },
 
     /**
      * Инициализация модуля Stats
      */
-    init(code) {
+    async init(code) {
         this.code = code;
-        this.setQuickFilter('all');
+        await this.setQuickFilter('all');
     }
 };
 
+/**
+ * ============================================
+ * LOGIN MODULE
+ * ============================================
+ */
+let MCZLogin = {
+    init() {
+        const loginForm = document.getElementById('loginForm');
+        if (!loginForm) return;
+        loginForm.addEventListener('submit', this.handleLogin.bind(this));
+    },
+
+    async handleLogin(e) {
+        e.preventDefault();
+
+        const token = document.getElementById('token').value;
+        const errorDiv = document.getElementById('error');
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Проверка...';
+        errorDiv.style.display = 'none';
+
+        try {
+            const response = await fetch('/api/health/', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                // Сохраняем токен ТОЛЬКО в cookie
+                document.cookie = `mcz_token=${token}; path=/; max-age=2592000; SameSite=Strict`;
+
+                // Перенаправляем на dashboard
+                window.location.href = '/dashboard';
+                return;
+            }
+
+            const errorMessage = response.status === 401
+                ? 'Неверный токен'
+                : 'Ошибка проверки токена';
+
+            this.showError(errorDiv, submitBtn, errorMessage);
+
+        } catch (error) {
+            this.showError(errorDiv, submitBtn, 'Ошибка сети: ' + error.message);
+        }
+    },
+
+    showError(errorDiv, submitBtn, message) {
+        errorDiv.textContent = '❌ ' + message;
+        errorDiv.style.display = 'block';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Войти';
+    }
+};
 
 // ============================================
 // ЭКСПОРТ В ГЛОБАЛЬНУЮ ОБЛАСТЬ
 // ============================================
 
+window.MCZAuth = MCZAuth;
 window.MCZUtils = MCZUtils;
 window.MCZAPI = MCZAPI;
 window.MCZDashboard = MCZDashboard;
 window.MCZLinks = MCZLinks;
 window.MCZStats = MCZStats;
+window.MCZLogin = MCZLogin;
