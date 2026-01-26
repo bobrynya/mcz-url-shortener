@@ -22,7 +22,7 @@ pub async fn layer(
             cookie_str.split(';').find_map(|cookie| {
                 let mut parts = cookie.trim().splitn(2, '=');
                 match (parts.next(), parts.next()) {
-                    (Some("mcz_token"), Some(value)) => Some(value.to_string()),
+                    (Some("auth_token"), Some(value)) => Some(value.to_string()),
                     _ => None,
                 }
             })

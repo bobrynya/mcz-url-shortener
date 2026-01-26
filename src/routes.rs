@@ -1,14 +1,14 @@
 use crate::api;
+use crate::api::handlers::redirect_handler;
 use crate::api::middleware::{auth, rate_limit, tracing};
 use crate::state::AppState;
 use crate::web;
 use crate::web::middleware::web_auth;
-use axum::{Router, middleware};
 use axum::routing::get;
+use axum::{Router, middleware};
 use tower::Layer;
 use tower_http::normalize_path::{NormalizePath, NormalizePathLayer};
 use tower_http::services::ServeDir;
-use crate::api::handlers::redirect_handler;
 
 pub fn app_router(state: AppState) -> NormalizePath<Router> {
     // API

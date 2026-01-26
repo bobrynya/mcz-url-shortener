@@ -4,13 +4,13 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
-      POSTGRES_DB: mcz-url-shortener
+      POSTGRES_DB: url-shortener
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d mcz-url-shortener"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d url-shortener"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -18,7 +18,7 @@ services:
   app:
     build: .
     environment:
-      DATABASE_URL: postgres://postgres:password@db:5432/mcz-url-shortener
+      DATABASE_URL: postgres://postgres:password@db:5432/url-shortener
       BASE_URL: https://s.test.com/
       LISTEN: 0.0.0.0:3000
     ports:

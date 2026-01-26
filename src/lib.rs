@@ -1,4 +1,4 @@
-//! # mcz-url-shortener
+//! # url-shortener
 //!
 //! Production-ready URL shortener library
 //!

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Вход - MCZ URL Shortener{% endblock %}
+{% block title %}Вход - URL Shortener{% endblock %}
 
 {% block header %}{% endblock %}
 
@@ -34,7 +34,7 @@
     document.body.classList.add('login-page');
 
     document.addEventListener('DOMContentLoaded', () => {
-        MCZLogin.init();
+        Login.init();
     });
 </script>
 {% endblock %}

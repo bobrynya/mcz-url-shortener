@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Главная - MCZ URL Shortener{% endblock %}
+{% block title %}Главная - URL Shortener{% endblock %}
 
 {% block header %}
 <div class="header">
-    <h1>MCZ URL Shortener</h1>
+    <h1>URL Shortener</h1>
     <a href="/dashboard/links" class="btn btn-secondary">Все ссылки →</a>
 </div>
 {% endblock %}
@@ -45,7 +45,7 @@
 <script>
     // Инициализация Dashboard при загрузке страницы
     document.addEventListener('DOMContentLoaded', () => {
-        MCZDashboard.init();
+        Dashboard.init();
     });
 </script>
 {% endblock %}

@@ -1,5 +1,5 @@
 /**
- * MCZ URL Shortener - JavaScript Library (UPDATED)
+ * URL Shortener - JavaScript Library (UPDATED)
  * Библиотека для работы с сокращателем ссылок
  */
 
@@ -9,7 +9,7 @@
  * ============================================
  */
 
-let MCZAuth = {
+let Auth = {
     /**
      * Получение токена из cookie
      */
@@ -17,7 +17,7 @@ let MCZAuth = {
         const cookies = document.cookie.split(';');
         for (let cookie of cookies) {
             const [name, value] = cookie.trim().split('=');
-            if (name === 'mcz_token') {
+            if (name === 'auth_token') {
                 return value;
             }
         }
@@ -29,7 +29,7 @@ let MCZAuth = {
      */
     logout() {
         // Удаляем cookie
-        document.cookie = 'mcz_token=; path=/; max-age=0';
+        document.cookie = 'auth_token=; path=/; max-age=0';
 
         // Редирект на login
         window.location.href = '/dashboard/login';
@@ -41,7 +41,7 @@ let MCZAuth = {
 // UTILITY FUNCTIONS (Утилитарные функции)
 // ============================================
 
-const MCZUtils = {
+const Utils = {
     /**
      * Форматирование даты в читаемый вид
      * @param {string} dateString - ISO строка даты (RFC3339)
@@ -137,7 +137,7 @@ const MCZUtils = {
 // API MODULE (Работа с API)
 // ============================================
 
-const MCZAPI = {
+const API = {
     /**
      * Базовый метод для API запросов
      * @param {string} endpoint - Эндпоинт API
@@ -145,7 +145,7 @@ const MCZAPI = {
      * @returns {Promise} Промис с данными
      */
     async request(endpoint, options = {}) {
-        const token = MCZAuth.getToken();
+        const token = Auth.getToken();
 
         const response = await fetch(endpoint, {
             headers: {
@@ -159,7 +159,7 @@ const MCZAPI = {
         // Если 401 - токен невалиден
         if (response.status === 401) {
             alert('Сессия истекла. Необходимо войти заново.');
-            MCZAuth.logout();
+            Auth.logout();
             return null;
         }
 
@@ -235,7 +235,7 @@ const MCZAPI = {
 // DASHBOARD MODULE (Модуль главной страницы)
 // ============================================
 
-const MCZDashboard = {
+const Dashboard = {
     domains: [],
     linkFields: [],
 
@@ -244,7 +244,7 @@ const MCZDashboard = {
      */
     async loadDomains() {
         try {
-            const data = await MCZAPI.getDomains();
+            const data = await API.getDomains();
             this.domains = data.items || [];
         } catch (error) {
             console.error('Ошибка загрузки доменов:', error);
@@ -257,13 +257,13 @@ const MCZDashboard = {
      */
     async loadRecentLinks() {
         const container = document.getElementById('recentLinks');
-        MCZUtils.showLoading(container);
+        Utils.showLoading(container);
 
         try {
-            const data = await MCZAPI.getLinks({ page: 1, page_size: 20 });
+            const data = await API.getLinks({ page: 1, page_size: 20 });
 
             if (!data.items || data.items.length === 0) {
-                MCZUtils.showEmpty('Нет созданных ссылок', container);
+                Utils.showEmpty('Нет созданных ссылок', container);
                 return;
             }
 
@@ -293,11 +293,11 @@ const MCZDashboard = {
                                 </td>
                                 <td><code>${link.domain}</code></td>
                                 <td>${link.total || 0}</td>
-                                <td>${MCZUtils.formatDate(link.created_at)}</td>
+                                <td>${Utils.formatDate(link.created_at)}</td>
                                 <td>
                                     <div class="actions">
                                         <a href="/dashboard/stats/${link.code}" class="btn btn-sm">Статистика</a>
-                                        <button onclick="MCZUtils.copyToClipboard('https://${link.domain}/${link.code}', this)" 
+                                        <button onclick="Utils.copyToClipboard('https://${link.domain}/${link.code}', this)" 
                                                 class="btn btn-sm btn-secondary">📋</button>
                                     </div>
                                 </td>
@@ -307,7 +307,7 @@ const MCZDashboard = {
                 </table>
             `;
         } catch (error) {
-            MCZUtils.showError('Ошибка загрузки ссылок: ' + error.message, container);
+            Utils.showError('Ошибка загрузки ссылок: ' + error.message, container);
         }
     },
 
@@ -328,7 +328,7 @@ const MCZDashboard = {
             <div class="link-field" id="field-${fieldId}">
                 <div class="link-field-header">
                     <h3>Ссылка #${this.linkFields.length}</h3>
-                    ${this.linkFields.length > 1 ? `<button type="button" onclick="MCZDashboard.removeLinkField(${fieldId})" class="btn btn-sm btn-danger">X</button>` : ''}
+                    ${this.linkFields.length > 1 ? `<button type="button" onclick="Dashboard.removeLinkField(${fieldId})" class="btn btn-sm btn-danger">X</button>` : ''}
                 </div>
                 <div class="link-field-content">
                     <div class="form-group">
@@ -459,7 +459,7 @@ const MCZDashboard = {
                         </div>
                         <div class="result-short">
                             <input type="text" value="${item.short_url}" readonly>
-                            <button onclick="MCZUtils.copyToClipboard('${item.short_url}', this)" class="btn btn-sm">
+                            <button onclick="Utils.copyToClipboard('${item.short_url}', this)" class="btn btn-sm">
                                 📋
                             </button>
                             <a href="/dashboard/stats/${item.code}" class="btn btn-sm btn-secondary">Статистика</a>
@@ -499,7 +499,7 @@ const MCZDashboard = {
         }
 
         try {
-            const result = await MCZAPI.createLinks(urls);
+            const result = await API.createLinks(urls);
 
             // Показываем результаты
             this.displayResults(result);
@@ -546,7 +546,7 @@ const MCZDashboard = {
 // LINKS MODULE (Модуль управления ссылками)
 // ============================================
 
-const MCZLinks = {
+const Links = {
     // Состояние
     state: {
         currentPage: 1,
@@ -563,7 +563,7 @@ const MCZLinks = {
      */
     async loadDomains() {
         try {
-            const data = await MCZAPI.getDomains();
+            const data = await API.getDomains();
             this.domains = data.items || [];
             this.populateDomainFilter();
         } catch (error) {
@@ -590,7 +590,7 @@ const MCZLinks = {
      */
     async loadLinks() {
         const container = document.getElementById('linksTable');
-        MCZUtils.showLoading(container);
+        Utils.showLoading(container);
 
         try {
             const params = {
@@ -602,10 +602,10 @@ const MCZLinks = {
             if (this.state.toDate) params.to = this.state.toDate;
             if (this.state.selectedDomain) params.domain = this.state.selectedDomain;
 
-            const data = await MCZAPI.getLinks(params);
+            const data = await API.getLinks(params);
 
             if (!data.items || data.items.length === 0) {
-                MCZUtils.showEmpty('Ссылки не найдены', container);
+                Utils.showEmpty('Ссылки не найдены', container);
                 return;
             }
 
@@ -637,11 +637,11 @@ const MCZLinks = {
                                     ${link.long_url}
                                 </td>
                                 <td>${link.total || 0}</td>
-                                <td>${MCZUtils.formatDate(link.created_at)}</td>
+                                <td>${Utils.formatDate(link.created_at)}</td>
                                 <td>
                                     <div class="actions">
                                         <a href="/dashboard/stats/${link.code}" class="btn btn-sm">Статистика</a>
-                                        <button onclick="MCZLinks.copyLink('${link.domain}', '${link.code}', this)" 
+                                        <button onclick="Links.copyLink('${link.domain}', '${link.code}', this)" 
                                                 class="btn btn-sm btn-secondary">📋</button>
                                     </div>
                                 </td>
@@ -656,7 +656,7 @@ const MCZLinks = {
             this.renderPagination();
 
         } catch (error) {
-            MCZUtils.showError('Ошибка загрузки ссылок: ' + error.message, container);
+            Utils.showError('Ошибка загрузки ссылок: ' + error.message, container);
         }
     },
 
@@ -665,7 +665,7 @@ const MCZLinks = {
      */
     async copyLink(domain, code, button) {
         const url = `https://${domain}/${code}`;
-        await MCZUtils.copyToClipboard(url, button);
+        await Utils.copyToClipboard(url, button);
     },
 
     /**
@@ -681,13 +681,13 @@ const MCZLinks = {
 
         // Кнопка "Предыдущая"
         html += `<button ${currentPage === 1 ? 'disabled' : ''} 
-                         onclick="MCZLinks.goToPage(${currentPage - 1})">← Предыдущая</button>`;
+                         onclick="Links.goToPage(${currentPage - 1})">← Предыдущая</button>`;
 
         // Номера страниц
         for (let i = 1; i <= totalPages; i++) {
             if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
                 html += `<button class="${i === currentPage ? 'active' : ''}" 
-                                 onclick="MCZLinks.goToPage(${i})">${i}</button>`;
+                                 onclick="Links.goToPage(${i})">${i}</button>`;
             } else if (i === currentPage - 3 || i === currentPage + 3) {
                 html += '<button disabled>...</button>';
             }
@@ -695,7 +695,7 @@ const MCZLinks = {
 
         // Кнопка "Следующая"
         html += `<button ${currentPage === totalPages ? 'disabled' : ''} 
-                         onclick="MCZLinks.goToPage(${currentPage + 1})">Следующая →</button>`;
+                         onclick="Links.goToPage(${currentPage + 1})">Следующая →</button>`;
 
         html += '</div>';
         container.innerHTML = html;
@@ -766,7 +766,7 @@ const MCZLinks = {
 // STATS MODULE (Модуль статистики ссылки)
 // ============================================
 
-const MCZStats = {
+const Stats = {
     code: null,
     chart: null,
     allClicksData: null,
@@ -878,7 +878,7 @@ const MCZStats = {
             if (this.state.fromDate) tableParams.from = this.state.fromDate;
             if (this.state.toDate) tableParams.to = this.state.toDate;
 
-            const tableData = await MCZAPI.getLinkStats(this.code, tableParams);
+            const tableData = await API.getLinkStats(this.code, tableParams);
 
             // Информация о ссылке (только при первой загрузке)
             if (this.state.currentPage === 1) {
@@ -889,12 +889,12 @@ const MCZStats = {
                 document.getElementById('longUrl').href = tableData.long_url;
                 document.getElementById('domain').textContent = tableData.domain;
                 document.getElementById('totalClicks').textContent = tableData.total || 0;
-                document.getElementById('createdAt').textContent = MCZUtils.formatDateTime(tableData.created_at);
+                document.getElementById('createdAt').textContent = Utils.formatDateTime(tableData.created_at);
 
                 // Кнопка копирования
                 const copyBtn = document.getElementById('copyBtn');
                 if (copyBtn) {
-                    copyBtn.onclick = () => MCZUtils.copyToClipboard(shortUrl, copyBtn);
+                    copyBtn.onclick = () => Utils.copyToClipboard(shortUrl, copyBtn);
                 }
 
                 // 2. Загружаем ВСЕ данные для ГРАФИКА (большой page_size)
@@ -909,7 +909,7 @@ const MCZStats = {
 
         } catch (error) {
             console.error('Ошибка загрузки статистики:', error);
-            MCZUtils.showError('Ошибка загрузки статистики: ' + error.message,
+            Utils.showError('Ошибка загрузки статистики: ' + error.message,
                 document.getElementById('clicksTable'));
         }
     },
@@ -927,7 +927,7 @@ const MCZStats = {
             if (this.state.fromDate) chartParams.from = this.state.fromDate;
             if (this.state.toDate) chartParams.to = this.state.toDate;
 
-            const allData = await MCZAPI.getLinkStats(this.code, chartParams);
+            const allData = await API.getLinkStats(this.code, chartParams);
             this.allClicksData = allData.items || [];
 
             // Строим график
@@ -1093,7 +1093,7 @@ const MCZStats = {
         const container = document.getElementById('clicksTable');
 
         if (!data.items || data.items.length === 0) {
-            MCZUtils.showEmpty('Нет данных о кликах за выбранный период', container);
+            Utils.showEmpty('Нет данных о кликах за выбранный период', container);
             return;
         }
 
@@ -1110,7 +1110,7 @@ const MCZStats = {
                 <tbody>
                     ${data.items.map(item => `
                         <tr>
-                            <td>${MCZUtils.formatDateTime(item.clicked_at)}</td>
+                            <td>${Utils.formatDateTime(item.clicked_at)}</td>
                             <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                 title="${item.user_agent || '—'}">
                                 ${item.user_agent || '—'}
@@ -1142,19 +1142,19 @@ const MCZStats = {
         let html = '<div class="pagination">';
 
         html += `<button ${currentPage === 1 ? 'disabled' : ''} 
-                         onclick="MCZStats.goToPage(${currentPage - 1})">← Предыдущая</button>`;
+                         onclick="Stats.goToPage(${currentPage - 1})">← Предыдущая</button>`;
 
         for (let i = 1; i <= totalPages; i++) {
             if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
                 html += `<button class="${i === currentPage ? 'active' : ''}" 
-                                 onclick="MCZStats.goToPage(${i})">${i}</button>`;
+                                 onclick="Stats.goToPage(${i})">${i}</button>`;
             } else if (i === currentPage - 3 || i === currentPage + 3) {
                 html += '<button disabled>...</button>';
             }
         }
 
         html += `<button ${currentPage === totalPages ? 'disabled' : ''} 
-                         onclick="MCZStats.goToPage(${currentPage + 1})">Следующая →</button>`;
+                         onclick="Stats.goToPage(${currentPage + 1})">Следующая →</button>`;
 
         html += '</div>';
         container.innerHTML = html;
@@ -1182,7 +1182,7 @@ const MCZStats = {
  * LOGIN MODULE
  * ============================================
  */
-let MCZLogin = {
+let Login = {
     init() {
         const loginForm = document.getElementById('loginForm');
         if (!loginForm) return;
@@ -1209,7 +1209,7 @@ let MCZLogin = {
 
             if (response.ok) {
                 // Сохраняем токен ТОЛЬКО в cookie
-                document.cookie = `mcz_token=${token}; path=/; max-age=2592000; SameSite=Strict`;
+                document.cookie = `auth_token=${token}; path=/; max-age=2592000; SameSite=Strict`;
 
                 // Перенаправляем на dashboard
                 window.location.href = '/dashboard';
@@ -1239,10 +1239,10 @@ let MCZLogin = {
 // ЭКСПОРТ В ГЛОБАЛЬНУЮ ОБЛАСТЬ
 // ============================================
 
-window.MCZAuth = MCZAuth;
-window.MCZUtils = MCZUtils;
-window.MCZAPI = MCZAPI;
-window.MCZDashboard = MCZDashboard;
-window.MCZLinks = MCZLinks;
-window.MCZStats = MCZStats;
-window.MCZLogin = MCZLogin;
+window.Auth = Auth;
+window.Utils = Utils;
+window.API = API;
+window.Dashboard = Dashboard;
+window.Links = Links;
+window.Stats = Stats;
+window.Login = Login;

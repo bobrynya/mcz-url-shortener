@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MCZ URL Shortener{% endblock %}</title>
+    <title>{% block title %}URL Shortener{% endblock %}</title>
 
     <!-- Основные стили -->
     <link rel="stylesheet" href="/static/css/styles.css">
@@ -20,11 +20,11 @@
     {% block header %}
     <!-- Заголовок по умолчанию с кнопкой выхода -->
     <div class="header">
-        <h1>MCZ URL Shortener</h1>
+        <h1>URL Shortener</h1>
         <div class="header-actions">
             <a href="/dashboard" class="btn btn-secondary">Dashboard</a>
             <a href="/dashboard/links" class="btn btn-secondary">Все ссылки</a>
-            <button onclick="MCZAuth.logout()" class="btn btn-danger btn-sm">
+            <button onclick="Auth.logout()" class="btn btn-danger btn-sm">
                 🚪 Выход
             </button>
         </div>
@@ -36,7 +36,7 @@
 </div>
 
 <!-- Основная JavaScript библиотека -->
-<script src="/static/js/mcz-shortener.js"></script>
+<script src="/static/js/shortener.js"></script>
 
 <!-- Дополнительные скрипты для конкретных страниц -->
 {% block extra_scripts %}{% endblock %}

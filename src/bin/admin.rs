@@ -1,5 +1,5 @@
-use mcz_url_shortener::domain::repositories::TokenRepository;
-use mcz_url_shortener::infrastructure::persistence::PgTokenRepository;
+use url_shortener::domain::repositories::TokenRepository;
+use url_shortener::infrastructure::persistence::PgTokenRepository;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use std::sync::Arc;
 
-/// CLI tool for managing mcz-url-shortener
+/// CLI tool for managing url-shortener
 #[derive(Parser)]
 #[command(name = "admin")]
 #[command(author, version, about, long_about = None)]

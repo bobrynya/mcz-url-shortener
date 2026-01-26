@@ -1,6 +1,6 @@
 use anyhow::Result;
-use mcz_url_shortener::{config, server};
 use tracing_subscriber::EnvFilter;
+use url_shortener::{config, server};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -14,7 +14,7 @@ async fn main() -> Result<()> {
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
 
-    tracing::info!("Starting mcz-url-shortener");
+    tracing::info!("Starting url-shortener");
 
     // Загрузка конфигурации
     let cfg = config::load_from_env()?;

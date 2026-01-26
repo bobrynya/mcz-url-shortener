@@ -1,4 +1,4 @@
-# mcz-url-shortener
+# url-shortener
 
 Production-ready URL shortener на Rust с чистой слоистой архитектурой (Clean Architecture), построенный на axum + sqlx + PostgreSQL.
 
@@ -137,7 +137,7 @@ DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/shorty
 LISTEN=0.0.0.0:3000
 
 # Логирование
-RUST_LOG=info,mcz_url_shortener=debug
+RUST_LOG=info,url_shortener=debug
 ```
 
 | Переменная | Описание | Пример |
@@ -170,7 +170,7 @@ sqlx migrate run
 
 ```bash
 # Генерирует .sqlx/ для compile-time проверки SQL без БД
-cargo sqlx prepare -- --bin mcz-url-shortener
+cargo sqlx prepare -- --bin url-shortener
 ```
 
 
@@ -182,7 +182,7 @@ cargo run
 
 # Production build
 cargo build --release
-./target/release/mcz-url-shortener
+./target/release/url-shortener
 ```
 
 
@@ -594,7 +594,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:3000/api/stats
 RUST_LOG=info cargo run
 
 # Детальная отладка
-RUST_LOG=debug,mcz_url_shortener=trace cargo run
+RUST_LOG=debug,url_shortener=trace cargo run
 ```
 
 ### Метрики

@@ -20,10 +20,10 @@ WORKDIR /app
 # (опционально) ca-certificates нужны для исходящих https-запросов, и иногда для TLS-драйверов
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /app/target/release/mcz-url-shortener /app/mcz-url-shortener
+COPY --from=builder /app/target/release/url-shortener /app/url-shortener
 COPY migrations /app/migrations
 
 ENV LISTEN=0.0.0.0:3000
 EXPOSE 3000
 
-CMD ["/app/mcz-url-shortener"]
+CMD ["/app/url-shortener"]
