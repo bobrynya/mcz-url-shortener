@@ -20,6 +20,7 @@ async-trait = "0.1.89"
 sqlx = { version = "0.8", features = [
     "runtime-tokio", "postgres", "macros", "tls-rustls", "chrono", "ipnetwork"
 ]}
+redis = { version = "1.0.2", features = ["tokio-comp", "connection-manager", "json"] }
 
 # Сериализация
 serde = { version = "1", features = ["derive"] }

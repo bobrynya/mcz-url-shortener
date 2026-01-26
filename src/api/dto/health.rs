@@ -11,6 +11,7 @@ pub struct HealthResponse {
 pub struct HealthChecks {
     pub database: CheckStatus,
     pub click_queue: CheckStatus,
+    pub cache: CheckStatus,
 }
 
 #[derive(Debug, Serialize)]

@@ -13,8 +13,12 @@ pub async fn health_handler(
     // Проверяем очередь кликов
     let queue_check = check_click_queue(&state);
 
+    // Проверяем Redis
+    let cache_check = check_cache(&state).await;
+
     // Общий статус
-    let all_healthy = db_check.status == "ok" && queue_check.status == "ok";
+    let all_healthy =
+        db_check.status == "ok" && queue_check.status == "ok" && cache_check.status == "ok";
 
     let response = HealthResponse {
         status: if all_healthy { "healthy" } else { "degraded" }.to_string(),
@@ -22,6 +26,7 @@ pub async fn health_handler(
         checks: HealthChecks {
             database: db_check,
             click_queue: queue_check,
+            cache: cache_check,
         },
     };
 
@@ -58,6 +63,21 @@ fn check_click_queue(state: &AppState) -> CheckStatus {
         CheckStatus {
             status: "ok".to_string(),
             message: Some(format!("Capacity: {}", state.click_sender.capacity())),
+        }
+    }
+}
+
+/// Проверка Redis кэша
+async fn check_cache(state: &AppState) -> CheckStatus {
+    if state.cache.health_check().await {
+        CheckStatus {
+            status: "ok".to_string(),
+            message: Some("Redis connected".to_string()),
+        }
+    } else {
+        CheckStatus {
+            status: "error".to_string(),
+            message: Some("Redis connection failed".to_string()),
         }
     }
 }

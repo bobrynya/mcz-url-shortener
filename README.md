@@ -49,68 +49,25 @@ src/
 ├── api/                       \# Presentation Layer
 ├── ├── routes.rs 
 │   ├── dto/                   \# Request/Response models
-│   │   ├── clicks.rs
-│   │   ├── domain.rs
-│   │   ├── health.rs
-│   │   ├── pagination.rs
-│   │   ├── shorten.rs
-│   │   ├── stats.rs
-│   │   └── stats_list.rs
 │   ├── handlers/              \# HTTP handlers
-│   │   ├── domains.rs
-│   │   ├── health.rs
-│   │   ├── redirect.rs
-│   │   ├── shorten.rs
-│   │   ├── stats.rs
-│   │   └── stats_list.rs
 │   └── middleware/            \# HTTP middleware
-│       ├── auth.rs
-│       ├── rate_limit.rs
-│       └── tracing.rs
 ├── application/               \# Application Layer
 │   └── services/              \# Бизнес-логика
-│       ├── auth_service.rs    \# Аутентификация
-│       ├── domain_service.rs  \# Управление доменами
-│       ├── link_service.rs    \# Создание и управление ссылками
-│       └── stats_service.rs   \# Работа со статистикой
 ├── bin/
 │   └── admin.rs               \# CLI
 ├── domain/                    \# Domain Layer
 │   ├── click_event.rs         \# Событие клика
 │   ├── click_worker.rs        \# Воркер обработки кликов
 │   ├── entities/              \# Доменные сущности
-│   │   ├── click.rs
-│   │   ├── domain.rs
-│   │   └── link.rs
 │   └── repositories/          \# Trait-интерфейсы репозиториев
-│       ├── domain_repository.rs
-│       ├── link_repository.rs
-│       ├── stats_repository.rs
-│       └── token_repository.rs
 ├── infrastructure/            \# Infrastructure Layer
+│   ├── cache/                 \# Redis реализации
 │   └── persistence/           \# PostgreSQL реализации
-│       ├── pg_domain_repository.rs
-│       ├── pg_link_repository.rs
-│       ├── pg_stats_repository.rs
-│       └── pg_token_repository.rs
 ├── utils/                     \# Утилиты
-│   ├── code_generator.rs
-│   ├── extract_domain.rs
-│   └── url_normalizer.rs
 └── web/                        \# Фронт
     ├── handlers/
-    │   ├── dashboard.rs
-    │   ├── links.rs
-    │   └── stats.rs
     ├── middleware/
-    │   └── web_auth.rs
-    ├── routes.rs
     └── templates/
-        ├── base.html
-        ├── dashboard.html
-        ├── domains_table.html
-        ├── links.html
-        └── stats.html
 ```
 
 ### Преимущества архитектуры
@@ -125,6 +82,7 @@ src/
 
 - **Rust**: stable toolchain + cargo
 - **PostgreSQL**: 14+ (локально или через Docker)
+- **Redis**: 7+ (локально или через Docker)
 - **sqlx-cli**: для миграций (опционально)
 
 ## ⚙️ Конфигурация
@@ -136,15 +94,19 @@ src/
 DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/shorty
 LISTEN=0.0.0.0:3000
 
+# Необязательные
+REDIS_URL=redis://localhost:6379
+
 # Логирование
 RUST_LOG=info,url_shortener=debug
 ```
 
-| Переменная | Описание | Пример |
-| :-- | :-- | :-- |
+| Переменная     | Описание                        | Пример                         |
+|:---------------|:--------------------------------|:-------------------------------|
 | `DATABASE_URL` | Строка подключения к PostgreSQL | `postgres://user:pass@host/db` |
-| `LISTEN` | Адрес и порт для HTTP сервера | `0.0.0.0:3000` |
-| `RUST_LOG` | Уровень логирования | `info` / `debug` / `trace` |
+| `REDIS_URL`    | Строка подключения к Redis      | `redis://localhost:6379`       |
+| `LISTEN`       | Адрес и порт для HTTP сервера   | `0.0.0.0:3000`                 |
+| `RUST_LOG`     | Уровень логирования             | `info` / `debug` / `trace`     |
 
 ## 🚀 Быстрый старт
 

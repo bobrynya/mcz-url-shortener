@@ -4,6 +4,7 @@ use tokio::sync::mpsc;
 
 use crate::application::services::{AuthService, DomainService, LinkService, StatsService};
 use crate::domain::click_event::ClickEvent;
+use crate::infrastructure::cache::CacheService;
 use crate::infrastructure::persistence::{
     PgDomainRepository, PgLinkRepository, PgStatsRepository, PgTokenRepository,
 };
@@ -16,12 +17,19 @@ pub struct AppState {
     pub auth_service: Arc<AuthService<PgTokenRepository>>,
     pub domain_service: Arc<DomainService<PgDomainRepository>>,
 
+    // Кэш
+    pub cache: Arc<dyn CacheService>,
+
     // Очередь для кликов
     pub click_sender: mpsc::Sender<ClickEvent>,
 }
 
 impl AppState {
-    pub fn new(pool: Arc<PgPool>, click_sender: mpsc::Sender<ClickEvent>) -> Self {
+    pub fn new(
+        pool: Arc<PgPool>,
+        click_sender: mpsc::Sender<ClickEvent>,
+        cache: Arc<dyn CacheService>,
+    ) -> Self {
         // Создаём репозитории
         let link_repo = Arc::new(PgLinkRepository::new(pool.clone()));
         let stats_repo = Arc::new(PgStatsRepository::new(pool.clone()));
@@ -39,6 +47,7 @@ impl AppState {
             stats_service,
             auth_service,
             domain_service,
+            cache,
             click_sender,
         }
     }
