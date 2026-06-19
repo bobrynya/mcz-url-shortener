@@ -152,6 +152,34 @@ async fn test_shorten_invalid_url(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn test_shorten_rejects_private_url(pool: PgPool) {
+    // The shared test state mirrors production (block_private_urls = true). A
+    // localhost URL is a syntactically valid URL (passes DTO validation) but is
+    // rejected by the service, surfacing as a per-item error in the batch.
+    let (state, _rx) = common::create_test_state(pool);
+    let app = Router::new()
+        .route("/api/shorten", post(shorten_handler))
+        .with_state(state);
+
+    let server = TestServer::new(app).unwrap();
+    let response = server
+        .post("/api/shorten")
+        .json(&json!({
+            "urls": [{ "url": "http://localhost:8080/admin" }]
+        }))
+        .await;
+
+    response.assert_status_ok();
+
+    let json = response.json::<serde_json::Value>();
+    assert_eq!(json["summary"]["successful"], 0);
+    assert_eq!(json["summary"]["failed"], 1);
+
+    let items = json["items"].as_array().unwrap();
+    assert_eq!(items[0]["error"]["code"], "validation_error");
+}
+
+#[sqlx::test]
 async fn test_shorten_custom_code_conflict(pool: PgPool) {
     let (state, _rx) = common::create_test_state(pool);
     let app = Router::new()

@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE links\n            SET deleted_at = now()\n            WHERE code = $1 AND domain_id = $2 AND deleted_at IS NULL\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fd7db4f369a040600e7e01e52b8afcd4dd4da3c4737e32b0009271ad57e6d1f3"
+}

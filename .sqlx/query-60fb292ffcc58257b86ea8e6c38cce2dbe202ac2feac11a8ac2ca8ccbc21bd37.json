@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            UPDATE domains\n            SET\n                is_active = COALESCE($2, is_active),\n                description = COALESCE($3, description),\n                updated_at = NOW()\n            WHERE id = $1\n            RETURNING id, domain, is_default, is_active, description, created_at, updated_at\n            ",
+  "query": "\n            UPDATE domains SET\n                domain      = COALESCE($2::TEXT, domain),\n                is_active   = COALESCE($3::BOOLEAN, is_active),\n                description = CASE WHEN $4 THEN $5::TEXT ELSE description END,\n                updated_at  = NOW()\n            WHERE id = $1\n            RETURNING id, domain, is_default, is_active, description, created_at, updated_at, deleted_at\n            ",
   "describe": {
     "columns": [
       {
@@ -37,11 +37,18 @@
         "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
         "Int8",
+        "Text",
+        "Bool",
         "Bool",
         "Text"
       ]
@@ -53,8 +60,9 @@
       false,
       true,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "e07140ed6b90633abe472453444b18f5535a97da9dfc53ae9fe4388f98f49b4c"
+  "hash": "60fb292ffcc58257b86ea8e6c38cce2dbe202ac2feac11a8ac2ca8ccbc21bd37"
 }

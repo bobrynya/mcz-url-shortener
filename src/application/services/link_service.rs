@@ -6,7 +6,7 @@ use crate::domain::entities::{Link, LinkPatch, NewLink};
 use crate::domain::repositories::{DomainRepository, LinkRepository};
 use crate::error::AppError;
 use crate::utils::code_generator::{generate_code, validate_custom_code};
-use crate::utils::url_normalizer::normalize_url;
+use crate::utils::url_normalizer::{is_public_url, normalize_url};
 use chrono::{DateTime, Utc};
 use serde_json::json;
 
@@ -17,14 +17,24 @@ use serde_json::json;
 pub struct LinkService<L: LinkRepository, D: DomainRepository> {
     link_repository: Arc<L>,
     domain_repository: Arc<D>,
+    /// When true, reject URLs that resolve to private/loopback/local hosts.
+    block_private_urls: bool,
 }
 
 impl<L: LinkRepository, D: DomainRepository> LinkService<L, D> {
     /// Creates a new link service.
-    pub fn new(link_repository: Arc<L>, domain_repository: Arc<D>) -> Self {
+    ///
+    /// `block_private_urls` controls whether destinations pointing at
+    /// private/loopback/link-local hosts (or `localhost`) are rejected.
+    pub fn new(
+        link_repository: Arc<L>,
+        domain_repository: Arc<D>,
+        block_private_urls: bool,
+    ) -> Self {
         Self {
             link_repository,
             domain_repository,
+            block_private_urls,
         }
     }
 
@@ -70,6 +80,13 @@ impl<L: LinkRepository, D: DomainRepository> LinkService<L, D> {
         let normalized_url = normalize_url(&long_url).map_err(|e| {
             AppError::bad_request("Invalid URL format", json!({ "reason": e.to_string() }))
         })?;
+
+        if self.block_private_urls && !is_public_url(&normalized_url) {
+            return Err(AppError::bad_request(
+                "URL points to a private, loopback, or local address",
+                json!({ "reason": "private_or_local_host" }),
+            ));
+        }
 
         if let Some(existing_link) = self
             .link_repository
@@ -238,7 +255,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(created_link.clone()));
 
-        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo));
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
 
         let result = service
             .create_short_link("https://example.com".to_string(), None, None, false)
@@ -277,7 +294,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(created_link.clone()));
 
-        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo));
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
 
         let result = service
             .create_short_link(
@@ -310,7 +327,7 @@ mod tests {
 
         mock_link_repo.expect_create().times(0);
 
-        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo));
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
 
         let result = service
             .create_short_link("https://example.com".to_string(), None, None, false)
@@ -327,7 +344,7 @@ mod tests {
         let mock_link_repo = MockLinkRepository::new();
         let mock_domain_repo = MockDomainRepository::new();
 
-        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo));
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
 
         let result = service
             .create_short_link_for_domain("not-a-url".to_string(), 1, None, None, false)
@@ -366,7 +383,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(created_link.clone()));
 
-        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo));
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
 
         let result = service
             .create_short_link(
@@ -405,7 +422,7 @@ mod tests {
             .times(1)
             .returning(move |_, _| Ok(Some(existing_link.clone())));
 
-        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo));
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
 
         let result = service
             .create_short_link(
@@ -418,5 +435,56 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::Conflict { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_create_short_link_blocks_private_url() {
+        // No repository calls are expected — the check short-circuits before them.
+        let mock_link_repo = MockLinkRepository::new();
+        let mock_domain_repo = MockDomainRepository::new();
+
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
+
+        let result = service
+            .create_short_link_for_domain(
+                "http://localhost:8080/admin".to_string(),
+                1,
+                None,
+                None,
+                false,
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AppError::Validation { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_create_short_link_allows_private_url_when_disabled() {
+        let mut mock_link_repo = MockLinkRepository::new();
+        let mock_domain_repo = MockDomainRepository::new();
+
+        mock_link_repo
+            .expect_find_by_long_url()
+            .times(1)
+            .returning(|_, _| Ok(None));
+        mock_link_repo
+            .expect_find_by_code()
+            .times(1)
+            .returning(|_, _| Ok(None));
+        let created = create_test_link(7, "abcd1234", "http://127.0.0.1:9000/", 1);
+        mock_link_repo
+            .expect_create()
+            .times(1)
+            .returning(move |_| Ok(created.clone()));
+
+        // block_private_urls = false → loopback destinations are accepted.
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), false);
+
+        let result = service
+            .create_short_link_for_domain("http://127.0.0.1:9000".to_string(), 1, None, None, false)
+            .await;
+
+        assert!(result.is_ok());
     }
 }

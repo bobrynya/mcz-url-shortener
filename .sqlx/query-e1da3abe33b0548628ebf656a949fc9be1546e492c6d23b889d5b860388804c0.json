@@ -1,0 +1,70 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH updated AS (\n                UPDATE links SET\n                    long_url   = COALESCE($3::TEXT,    long_url),\n                    expires_at = CASE WHEN $4 THEN $5::TIMESTAMPTZ ELSE expires_at END,\n                    permanent  = COALESCE($6::BOOLEAN, permanent),\n                    deleted_at = CASE WHEN $7 THEN NULL ELSE deleted_at END\n                WHERE code = $1 AND domain_id = $2\n                RETURNING id, code, long_url, domain_id, expires_at, permanent, deleted_at, created_at\n            )\n            SELECT\n                u.id, u.code, u.long_url,\n                d.domain,\n                u.expires_at, u.permanent, u.deleted_at, u.created_at\n            FROM updated u\n            LEFT JOIN domains d ON d.id = u.domain_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "domain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "permanent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Text",
+        "Bool",
+        "Timestamptz",
+        "Bool",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "e1da3abe33b0548628ebf656a949fc9be1546e492c6d23b889d5b860388804c0"
+}

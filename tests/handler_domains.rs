@@ -230,9 +230,7 @@ async fn test_delete_domain_success(pool: PgPool) {
     let id = common::create_test_domain(&pool, "bye.com").await;
     let server = make_server(pool);
 
-    let response = server
-        .delete(&format!("/api/domains/{id}"))
-        .await;
+    let response = server.delete(&format!("/api/domains/{id}")).await;
 
     response.assert_status(axum::http::StatusCode::NO_CONTENT);
 }
@@ -243,9 +241,7 @@ async fn test_delete_domain_default_rejected(pool: PgPool) {
     let server = make_server(pool);
 
     // Deleting the default domain must be rejected.
-    let response = server
-        .delete(&format!("/api/domains/{default_id}"))
-        .await;
+    let response = server.delete(&format!("/api/domains/{default_id}")).await;
 
     // Expect 4xx — the service returns an error for default domain deletion.
     assert!(

@@ -1,0 +1,65 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT\n                l.id, l.code, l.long_url,\n                d.domain as \"domain?\",\n                l.expires_at, l.permanent, l.deleted_at, l.created_at\n            FROM links l\n            LEFT JOIN domains d ON d.id = l.domain_id\n            WHERE l.code = $1 AND l.domain_id = $2\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "domain?",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "permanent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "999901d2f340ec461dc5e7ffcf4092be3eda79efc0ec6c6c6b9438167bbbacf0"
+}

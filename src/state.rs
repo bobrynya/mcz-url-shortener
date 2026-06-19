@@ -28,6 +28,9 @@ pub struct AppState {
     pub cache: Arc<dyn CacheService>,
 
     pub click_sender: mpsc::Sender<ClickEvent>,
+
+    /// Whether the dashboard auth cookie should be marked `Secure`.
+    pub cookie_secure: bool,
 }
 
 impl AppState {
@@ -42,6 +45,9 @@ impl AppState {
     /// - `click_sender` - channel sender for asynchronous click event processing
     /// - `cache` - cache implementation ([`RedisCache`](crate::infrastructure::cache::RedisCache) or [`NullCache`](crate::infrastructure::cache::NullCache))
     /// - `token_signing_secret` - HMAC key for token hashing; must match `TOKEN_SIGNING_SECRET`
+    /// - `cookie_secure` - whether the dashboard session cookie is marked `Secure`
+    /// - `block_private_urls` - whether to reject shortening private/loopback/local URLs
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         link_repo: Arc<PgLinkRepository>,
         stats_repo: Arc<PgStatsRepository>,
@@ -50,8 +56,14 @@ impl AppState {
         click_sender: mpsc::Sender<ClickEvent>,
         cache: Arc<dyn CacheService>,
         token_signing_secret: String,
+        cookie_secure: bool,
+        block_private_urls: bool,
     ) -> Self {
-        let link_service = Arc::new(LinkService::new(link_repo, domain_repo.clone()));
+        let link_service = Arc::new(LinkService::new(
+            link_repo,
+            domain_repo.clone(),
+            block_private_urls,
+        ));
         let stats_service = Arc::new(StatsService::new(stats_repo));
         let auth_service = Arc::new(AuthService::new(token_repo, token_signing_secret));
         let domain_service = Arc::new(DomainService::new(domain_repo));
@@ -63,6 +75,7 @@ impl AppState {
             domain_service,
             cache,
             click_sender,
+            cookie_secure,
         }
     }
 }
