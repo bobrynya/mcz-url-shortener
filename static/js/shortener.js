@@ -1,13 +1,13 @@
 // =============================================================================
-// Auth — cookie-based token management
+// Auth — server-managed HttpOnly session cookie
+//
+// The session token lives in an HttpOnly cookie set by the server, so it is not
+// readable from JavaScript. Same-origin requests send it automatically; login
+// and logout go through dedicated server endpoints.
 // =============================================================================
 const Auth = {
-  getToken() {
-    const m = document.cookie.match(/(?:^|;\s*)auth_token=([^;]+)/);
-    return m ? decodeURIComponent(m[1]) : null;
-  },
-  logout() {
-    document.cookie = 'auth_token=; path=/; max-age=0';
+  async logout() {
+    await fetch('/dashboard/logout', { method: 'POST' }).catch(() => {});
     window.location.href = '/dashboard/login';
   },
   redirectToLogin() {
@@ -17,16 +17,15 @@ const Auth = {
 
 // =============================================================================
 // Api — thin fetch wrapper
+// Auth is carried by the HttpOnly session cookie (sent automatically same-origin).
 // Returns: null (204 No Content), undefined (401, already redirected), {ok, status, data}
 // =============================================================================
 const Api = {
   async request(endpoint, options = {}) {
-    const token = Auth.getToken();
     const res = await fetch(endpoint, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(options.headers || {}),
       },
     });
@@ -119,14 +118,13 @@ function loginPage() {
       this.error = '';
       this.loading = true;
       try {
-        // Validate token against a protected endpoint; /health is public and always 200
-        const res = await fetch('/api/domains', {
-          headers: { Authorization: `Bearer ${this.token}` },
+        // The server validates the token and sets an HttpOnly session cookie.
+        const res = await fetch('/dashboard/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: this.token }),
         });
         if (res.ok) {
-          const exp = new Date();
-          exp.setDate(exp.getDate() + 30);
-          document.cookie = `auth_token=${encodeURIComponent(this.token)}; path=/; expires=${exp.toUTCString()}`;
           window.location.href = '/dashboard';
         } else {
           this.error = res.status === 401 ? 'Invalid token' : 'Authentication failed';

@@ -1,8 +1,14 @@
 //! Web dashboard route configuration.
 
 use crate::state::AppState;
-use crate::web::handlers::{dashboard_handler, domains_handler, links_handler, login_handler, stats_handler};
-use axum::{Router, routing::get};
+use crate::web::handlers::{
+    dashboard_handler, domains_handler, links_handler, login_handler, login_submit_handler,
+    logout_handler, stats_handler,
+};
+use axum::{
+    Router,
+    routing::{get, post},
+};
 
 /// Protected dashboard routes requiring authentication.
 ///
@@ -26,7 +32,11 @@ pub fn protected_routes() -> Router<AppState> {
 ///
 /// # Endpoints
 ///
-/// - `GET /login` - Login page
+/// - `GET  /login`  - Login page
+/// - `POST /login`  - Validate a token and set the HttpOnly session cookie
+/// - `POST /logout` - Clear the session cookie
 pub fn public_routes() -> Router<AppState> {
-    Router::new().route("/login", get(login_handler))
+    Router::new()
+        .route("/login", get(login_handler).post(login_submit_handler))
+        .route("/logout", post(logout_handler))
 }

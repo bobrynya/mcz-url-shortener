@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO links (code, long_url, domain_id, permanent) VALUES ($1, $2, $3, TRUE)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "fde4cfea9b835b97cf7f565296a08500e6aef2c512d50f8115b353befca84764"
+}

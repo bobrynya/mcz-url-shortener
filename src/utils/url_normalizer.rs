@@ -3,7 +3,9 @@
 //! Ensures consistent URL representation by normalizing hostnames, removing
 //! fragments, and handling default ports.
 
-use url::Url;
+use std::net::{Ipv4Addr, Ipv6Addr};
+
+use url::{Host, Url};
 
 /// Errors that can occur during URL normalization.
 #[derive(Debug, thiserror::Error)]
@@ -88,6 +90,63 @@ pub fn normalize_url(input: &str) -> Result<String, UrlNormalizationError> {
     }
 
     Ok(url.to_string())
+}
+
+/// Returns `true` if the URL targets a publicly-routable host.
+///
+/// This guards against the shortener being used to redirect to internal
+/// infrastructure: loopback, RFC 1918 private ranges, link-local, carrier-grade
+/// NAT, IPv6 unique-local/link-local addresses, and the `localhost` domain are
+/// all treated as non-public. The input is expected to be a normalized http(s)
+/// URL (see [`normalize_url`]); anything unparseable is treated as non-public.
+pub fn is_public_url(input: &str) -> bool {
+    let Ok(url) = Url::parse(input) else {
+        return false;
+    };
+    match url.host() {
+        Some(Host::Domain(domain)) => is_public_domain(domain),
+        Some(Host::Ipv4(ip)) => is_public_ipv4(ip),
+        Some(Host::Ipv6(ip)) => is_public_ipv6(ip),
+        None => false,
+    }
+}
+
+/// Rejects `localhost` and any `*.localhost` subdomain.
+fn is_public_domain(domain: &str) -> bool {
+    let d = domain.trim_end_matches('.').to_ascii_lowercase();
+    !(d == "localhost" || d.ends_with(".localhost"))
+}
+
+/// Rejects loopback, private, link-local, unspecified, broadcast, documentation
+/// and carrier-grade-NAT (100.64.0.0/10) IPv4 addresses.
+fn is_public_ipv4(ip: Ipv4Addr) -> bool {
+    let o = ip.octets();
+    let is_cgnat = o[0] == 100 && (o[1] & 0xc0) == 0x40; // 100.64.0.0/10
+    !(ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_unspecified()
+        || ip.is_broadcast()
+        || ip.is_documentation()
+        || is_cgnat)
+}
+
+/// Rejects loopback/unspecified, IPv6 unique-local (fc00::/7) and link-local
+/// (fe80::/10), plus any address embedding a non-public IPv4 (mapped/compat).
+fn is_public_ipv6(ip: Ipv6Addr) -> bool {
+    if ip.is_loopback() || ip.is_unspecified() {
+        return false;
+    }
+    if let Some(v4) = ip.to_ipv4_mapped() {
+        return is_public_ipv4(v4);
+    }
+    if let Some(v4) = ip.to_ipv4() {
+        return is_public_ipv4(v4);
+    }
+    let seg = ip.segments();
+    let is_unique_local = (seg[0] & 0xfe00) == 0xfc00; // fc00::/7
+    let is_link_local = (seg[0] & 0xffc0) == 0xfe80; // fe80::/10
+    !(is_unique_local || is_link_local)
 }
 
 #[cfg(test)]
@@ -328,5 +387,68 @@ mod tests {
     fn test_normalize_unicode_domain() {
         let result = normalize_url("https://münchen.de");
         assert!(result.is_ok());
+    }
+
+    // ── is_public_url ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_is_public_url_allows_public_domain() {
+        assert!(is_public_url("https://example.com/path"));
+        assert!(is_public_url("http://sub.example.org"));
+        assert!(is_public_url("https://münchen.de"));
+    }
+
+    #[test]
+    fn test_is_public_url_allows_public_ip() {
+        assert!(is_public_url("http://8.8.8.8"));
+        assert!(is_public_url("https://[2606:4700:4700::1111]"));
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_localhost() {
+        assert!(!is_public_url("http://localhost"));
+        assert!(!is_public_url("http://localhost:3000/admin"));
+        assert!(!is_public_url("http://api.localhost"));
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_loopback_ipv4() {
+        assert!(!is_public_url("http://127.0.0.1"));
+        assert!(!is_public_url("http://127.0.0.1:8080/internal"));
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_private_ipv4() {
+        assert!(!is_public_url("http://10.0.0.5"));
+        assert!(!is_public_url("http://172.16.0.1"));
+        assert!(!is_public_url("http://192.168.1.1"));
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_link_local_and_cgnat() {
+        assert!(!is_public_url("http://169.254.169.254/latest/meta-data")); // cloud metadata
+        assert!(!is_public_url("http://100.64.0.1"));
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_unspecified() {
+        assert!(!is_public_url("http://0.0.0.0"));
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_ipv6_loopback_and_ula() {
+        assert!(!is_public_url("http://[::1]"));
+        assert!(!is_public_url("http://[fd00::1]")); // unique local
+        assert!(!is_public_url("http://[fe80::1]")); // link local
+    }
+
+    #[test]
+    fn test_is_public_url_blocks_ipv4_mapped_loopback() {
+        assert!(!is_public_url("http://[::ffff:127.0.0.1]"));
+    }
+
+    #[test]
+    fn test_is_public_url_rejects_unparseable() {
+        assert!(!is_public_url("not a url"));
     }
 }

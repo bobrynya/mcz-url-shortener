@@ -99,7 +99,7 @@ mod tests {
 
         mock_repo
             .expect_validate_token()
-            .withf(move |hash| hash == &expected_hash)
+            .withf(move |hash| *hash == expected_hash)
             .times(1)
             .returning(|_| Ok(true));
 

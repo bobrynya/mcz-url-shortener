@@ -9,7 +9,7 @@ repository = "https://github.com/bobrynya/url-shortener"
 readme = "README.md"
 keywords = ["url", "shortener", "web", "axum", "postgres"]
 categories = ["web-programming"]
-rust-version = "1.93"
+rust-version = "1.96"
 default-run = "url-shortener"
 
 [profile.dev]
@@ -89,8 +89,8 @@ dialoguer = "0.12"
 colored = "3.1"
 
 # Templates
-askama = "0.15"
-askama_web = { version = "0.15", features = ["axum-0.8", "tracing-0.1"] }
+askama = "0.16"
+askama_web = { version = "0.16", features = ["axum-0.8", "tracing-0.1"] }
 
 [dev-dependencies]
 # HTTP testing for Axum

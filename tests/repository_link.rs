@@ -61,6 +61,81 @@ async fn test_find_by_code_not_found(pool: PgPool) {
     assert!(result.unwrap().is_none());
 }
 
+/// Regression: the same destination URL must be shortenable on two different
+/// domains. Previously a global `UNIQUE(long_url)` constraint blocked this.
+#[sqlx::test]
+async fn test_same_url_allowed_on_different_domains(pool: PgPool) {
+    let domain_a = common::create_test_domain(&pool, "doma.com").await;
+    let domain_b = common::create_test_domain(&pool, "domb.com").await;
+    let repo = PgLinkRepository::new(Arc::new(pool));
+
+    let url = "https://shared-destination.com".to_string();
+
+    let a = repo
+        .create(NewLink {
+            code: "codea1".to_string(),
+            long_url: url.clone(),
+            domain_id: domain_a,
+            expires_at: None,
+            permanent: false,
+        })
+        .await;
+    assert!(a.is_ok(), "first domain create failed: {a:?}");
+
+    let b = repo
+        .create(NewLink {
+            code: "codeb1".to_string(),
+            long_url: url.clone(),
+            domain_id: domain_b,
+            expires_at: None,
+            permanent: false,
+        })
+        .await;
+    assert!(
+        b.is_ok(),
+        "same URL on a second domain should be allowed: {b:?}"
+    );
+}
+
+/// Regression: after a link is soft-deleted, the same URL (and code) must be
+/// re-creatable. Previously the global/non-partial unique constraints kept the
+/// soft-deleted row's URL and blocked re-insertion.
+#[sqlx::test]
+async fn test_recreate_url_after_soft_delete(pool: PgPool) {
+    let domain_id = common::create_test_domain(&pool, "reuse.com").await;
+    let repo = PgLinkRepository::new(Arc::new(pool));
+
+    let url = "https://recreate-me.com".to_string();
+
+    repo.create(NewLink {
+        code: "reuse1".to_string(),
+        long_url: url.clone(),
+        domain_id,
+        expires_at: None,
+        permanent: false,
+    })
+    .await
+    .expect("initial create failed");
+
+    let deleted = repo.soft_delete("reuse1", domain_id).await.unwrap();
+    assert!(deleted, "soft_delete should report a row was deleted");
+
+    // Same URL and same code should now be free to reuse.
+    let recreated = repo
+        .create(NewLink {
+            code: "reuse1".to_string(),
+            long_url: url.clone(),
+            domain_id,
+            expires_at: None,
+            permanent: false,
+        })
+        .await;
+    assert!(
+        recreated.is_ok(),
+        "re-creating a soft-deleted URL/code should succeed: {recreated:?}"
+    );
+}
+
 #[sqlx::test]
 async fn test_find_by_long_url(pool: PgPool) {
     let domain_id = common::create_test_domain(&pool, "test4.com").await;

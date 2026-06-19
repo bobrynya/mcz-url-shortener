@@ -10,6 +10,7 @@ use std::net::SocketAddr;
 use tracing::{debug, error};
 
 use crate::domain::click_event::ClickEvent;
+use crate::domain::entities::Link;
 use crate::error::AppError;
 use crate::state::AppState;
 use crate::utils::extract_domain::extract_domain_from_headers;
@@ -65,27 +66,7 @@ pub async fn redirect_handler(
         Ok(None) => {
             debug!("Cache MISS for {}", cache_key);
 
-            let domain_entity = state.domain_service.get_domain(&domain).await?;
-
-            let link = state
-                .link_service
-                .get_link_by_code(&code, domain_entity.id)
-                .await?;
-
-            // Deleted takes precedence over expired in the error message.
-            if link.is_deleted() {
-                return Err(AppError::gone(
-                    "This link has been deleted",
-                    json!({ "code": code }),
-                ));
-            }
-            if link.is_expired() {
-                return Err(AppError::gone(
-                    "This link has expired",
-                    json!({ "code": code }),
-                ));
-            }
-
+            let link = load_active_link(&state, &domain, &code).await?;
             let url = link.long_url.clone();
             let permanent = link.permanent;
 
@@ -112,25 +93,7 @@ pub async fn redirect_handler(
             error!("Cache error: {}", e);
 
             // Fall back to database on cache error.
-            let domain_entity = state.domain_service.get_domain(&domain).await?;
-            let link = state
-                .link_service
-                .get_link_by_code(&code, domain_entity.id)
-                .await?;
-
-            if link.is_deleted() {
-                return Err(AppError::gone(
-                    "This link has been deleted",
-                    json!({ "code": code }),
-                ));
-            }
-            if link.is_expired() {
-                return Err(AppError::gone(
-                    "This link has expired",
-                    json!({ "code": code }),
-                ));
-            }
-
+            let link = load_active_link(&state, &domain, &code).await?;
             (link.long_url, link.permanent)
         }
     };
@@ -146,13 +109,46 @@ pub async fn redirect_handler(
         headers.get(header::REFERER).and_then(|v| v.to_str().ok()),
     );
 
-    let _ = state.click_sender.try_send(click_event);
+    if state.click_sender.try_send(click_event).is_err() {
+        // Queue is full or closed — the click is dropped rather than blocking
+        // the redirect. Surface it via metrics so saturation is observable.
+        metrics::counter!("click_enqueue_dropped_total").increment(1);
+        debug!("Click queue full; dropped click event for {}", cache_key);
+    }
 
     if permanent {
         Ok(Redirect::permanent(&long_url))
     } else {
         Ok(Redirect::temporary(&long_url))
     }
+}
+
+/// Loads a link from the database and rejects it if it is no longer servable.
+///
+/// Resolves the domain, fetches the link by code, and returns [`AppError::Gone`]
+/// if the link has been soft-deleted (takes precedence) or has expired.
+async fn load_active_link(state: &AppState, domain: &str, code: &str) -> Result<Link, AppError> {
+    let domain_entity = state.domain_service.get_domain(domain).await?;
+    let link = state
+        .link_service
+        .get_link_by_code(code, domain_entity.id)
+        .await?;
+
+    // Deleted takes precedence over expired in the error message.
+    if link.is_deleted() {
+        return Err(AppError::gone(
+            "This link has been deleted",
+            json!({ "code": code }),
+        ));
+    }
+    if link.is_expired() {
+        return Err(AppError::gone(
+            "This link has expired",
+            json!({ "code": code }),
+        ));
+    }
+
+    Ok(link)
 }
 
 /// Encodes a URL with a redirect-type prefix for caching.

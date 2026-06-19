@@ -1,8 +1,8 @@
 mod common;
 
+use axum::http::StatusCode;
 use axum::{Router, extract::ConnectInfo, routing::get};
 use axum_test::TestServer;
-use axum::http::StatusCode;
 use sqlx::PgPool;
 use std::net::SocketAddr;
 use tower::Layer;

@@ -51,8 +51,14 @@ pub fn app_router(state: AppState, behind_proxy: bool) -> NormalizePath<Router> 
 
     let web_router = Router::new().merge(web_protected).merge(web_public);
 
-    let router = Router::new()
+    // The public redirect endpoint is rate-limited per-IP. `/health` is left
+    // unthrottled so orchestrator/liveness probes are never rejected with 429.
+    let redirect_router = Router::new()
         .route("/{code}", get(redirect_handler))
+        .layer(rate_limit::layer(behind_proxy));
+
+    let router = Router::new()
+        .merge(redirect_router)
         .route("/health", get(health_handler))
         .nest("/api", api_router)
         .nest("/dashboard", web_router)

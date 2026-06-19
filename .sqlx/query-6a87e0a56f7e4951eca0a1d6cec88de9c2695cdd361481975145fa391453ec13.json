@@ -1,0 +1,68 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            WITH inserted AS (\n                INSERT INTO links (code, long_url, domain_id, expires_at, permanent)\n                VALUES ($1, $2, $3, $4, $5)\n                RETURNING id, code, long_url, domain_id, expires_at, permanent, deleted_at, created_at\n            )\n            SELECT\n                i.id,\n                i.code,\n                i.long_url,\n                d.domain,\n                i.expires_at,\n                i.permanent,\n                i.deleted_at,\n                i.created_at\n            FROM inserted i\n            LEFT JOIN domains d ON d.id = i.domain_id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8"
+      },
+      {
+        "ordinal": 1,
+        "name": "code",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 2,
+        "name": "long_url",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "domain",
+        "type_info": "Varchar"
+      },
+      {
+        "ordinal": 4,
+        "name": "expires_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 5,
+        "name": "permanent",
+        "type_info": "Bool"
+      },
+      {
+        "ordinal": 6,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "created_at",
+        "type_info": "Timestamptz"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Text",
+        "Int8",
+        "Timestamptz",
+        "Bool"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "6a87e0a56f7e4951eca0a1d6cec88de9c2695cdd361481975145fa391453ec13"
+}

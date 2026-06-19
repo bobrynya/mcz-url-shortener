@@ -95,6 +95,8 @@ pub async fn run(config: Config) -> Result<()> {
         click_tx,
         cache,
         config.token_signing_secret.clone(),
+        config.cookie_secure,
+        config.block_private_urls,
     );
 
     let app = app_router(state, config.behind_proxy);

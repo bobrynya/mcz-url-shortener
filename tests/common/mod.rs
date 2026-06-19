@@ -100,7 +100,8 @@ pub fn create_test_state(
     let stats_repo = Arc::new(PgStatsRepository::new(pool.clone()));
     let token_repo = Arc::new(PgTokenRepository::new(pool.clone()));
 
-    let link_service = Arc::new(LinkService::new(link_repo, domain_repo.clone()));
+    // Integration tests exercise public URLs; mirror the production default.
+    let link_service = Arc::new(LinkService::new(link_repo, domain_repo.clone(), true));
     let domain_service = Arc::new(DomainService::new(domain_repo));
     let stats_service = Arc::new(StatsService::new(stats_repo));
     let auth_service = Arc::new(AuthService::new(
@@ -115,6 +116,7 @@ pub fn create_test_state(
         domain_service,
         cache: Arc::new(NullCache),
         click_sender: tx,
+        cookie_secure: false,
     };
 
     (state, rx)

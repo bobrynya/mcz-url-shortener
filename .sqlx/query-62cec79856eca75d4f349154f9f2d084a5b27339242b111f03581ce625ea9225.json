@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT id, domain, is_default, is_active, description, created_at, updated_at\n            FROM domains\n            WHERE domain = $1\n            ",
+  "query": "\n            SELECT id, domain, is_default, is_active, description, created_at, updated_at, deleted_at\n            FROM domains\n            WHERE id = $1\n            ",
   "describe": {
     "columns": [
       {
@@ -37,11 +37,16 @@
         "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
+      },
+      {
+        "ordinal": 7,
+        "name": "deleted_at",
+        "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Text"
+        "Int8"
       ]
     },
     "nullable": [
@@ -51,8 +56,9 @@
       false,
       true,
       false,
-      false
+      false,
+      true
     ]
   },
-  "hash": "b8b138ed8b43862240acc4c3981c6517086d044fc8ad2f3da639f865ce61ea9c"
+  "hash": "62cec79856eca75d4f349154f9f2d084a5b27339242b111f03581ce625ea9225"
 }

@@ -112,42 +112,70 @@ mod tests {
 
     #[test]
     fn test_page_2_with_default_size() {
-        let (offset, limit) = params(Some(2), None).validate_and_get_offset_limit().unwrap();
+        let (offset, limit) = params(Some(2), None)
+            .validate_and_get_offset_limit()
+            .unwrap();
         assert_eq!(offset, 25);
         assert_eq!(limit, 25);
     }
 
     #[test]
     fn test_custom_page_and_size() {
-        let (offset, limit) = params(Some(3), Some(50)).validate_and_get_offset_limit().unwrap();
+        let (offset, limit) = params(Some(3), Some(50))
+            .validate_and_get_offset_limit()
+            .unwrap();
         assert_eq!(offset, 100);
         assert_eq!(limit, 50);
     }
 
     #[test]
     fn test_page_zero_is_error() {
-        assert!(params(Some(0), None).validate_and_get_offset_limit().is_err());
+        assert!(
+            params(Some(0), None)
+                .validate_and_get_offset_limit()
+                .is_err()
+        );
     }
 
     #[test]
     fn test_page_size_below_minimum_is_error() {
-        assert!(params(None, Some(9)).validate_and_get_offset_limit().is_err());
-        assert!(params(None, Some(0)).validate_and_get_offset_limit().is_err());
+        assert!(
+            params(None, Some(9))
+                .validate_and_get_offset_limit()
+                .is_err()
+        );
+        assert!(
+            params(None, Some(0))
+                .validate_and_get_offset_limit()
+                .is_err()
+        );
     }
 
     #[test]
     fn test_page_size_at_minimum_is_ok() {
-        assert!(params(None, Some(10)).validate_and_get_offset_limit().is_ok());
+        assert!(
+            params(None, Some(10))
+                .validate_and_get_offset_limit()
+                .is_ok()
+        );
     }
 
     #[test]
     fn test_page_size_at_maximum_is_ok() {
-        assert!(params(None, Some(1000)).validate_and_get_offset_limit().is_ok());
+        assert!(
+            params(None, Some(1000))
+                .validate_and_get_offset_limit()
+                .is_ok()
+        );
     }
 
     #[test]
     fn test_page_size_above_maximum_is_error() {
-        assert!(params(None, Some(1001)).validate_and_get_offset_limit().is_err());
+        assert!(
+            params(None, Some(1001))
+                .validate_and_get_offset_limit()
+                .is_err()
+        );
     }
 
     #[test]

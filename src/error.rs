@@ -204,8 +204,12 @@ pub fn map_sqlx_error(e: SqlxError) -> AppError {
 
                 let constraint = db_err.constraint().unwrap_or("unknown");
                 let (message, field) = match constraint {
-                    "links_code_key" => ("This short code is already in use", "code"),
-                    "links_long_url_key" => ("This URL has already been shortened", "long_url"),
+                    "links_code_key" | "idx_links_unique_code_per_domain" => {
+                        ("This short code is already in use", "code")
+                    }
+                    "links_long_url_key" | "idx_links_unique_long_url_per_domain" => {
+                        ("This URL has already been shortened", "long_url")
+                    }
                     "api_tokens_token_hash_key" => ("Token already exists", "token"),
                     _ => {
                         tracing::warn!(
@@ -330,100 +334,6 @@ pub fn map_sqlx_error(e: SqlxError) -> AppError {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::StatusCode;
-    use axum::response::IntoResponse;
-
-    fn status(err: AppError) -> StatusCode {
-        err.into_response().status()
-    }
-
-    // ── IntoResponse status codes ─────────────────────────────────────────────
-
-    #[test]
-    fn test_validation_error_is_400() {
-        assert_eq!(status(AppError::bad_request("bad input", json!({}))), StatusCode::BAD_REQUEST);
-    }
-
-    #[test]
-    fn test_not_found_is_404() {
-        assert_eq!(status(AppError::not_found("missing", json!({}))), StatusCode::NOT_FOUND);
-    }
-
-    #[test]
-    fn test_gone_is_410() {
-        assert_eq!(status(AppError::gone("deleted", json!({}))), StatusCode::GONE);
-    }
-
-    #[test]
-    fn test_conflict_is_409() {
-        assert_eq!(status(AppError::conflict("duplicate", json!({}))), StatusCode::CONFLICT);
-    }
-
-    #[test]
-    fn test_unauthorized_is_401() {
-        assert_eq!(status(AppError::unauthorized("token invalid", json!({}))), StatusCode::UNAUTHORIZED);
-    }
-
-    #[test]
-    fn test_internal_is_500() {
-        assert_eq!(status(AppError::internal("oops", json!({}))), StatusCode::INTERNAL_SERVER_ERROR);
-    }
-
-    // ── Unauthorized includes WWW-Authenticate header ─────────────────────────
-
-    #[test]
-    fn test_unauthorized_has_www_authenticate_header() {
-        let response = AppError::unauthorized("bad token", json!({})).into_response();
-        let www_auth = response.headers().get(axum::http::header::WWW_AUTHENTICATE);
-        assert!(www_auth.is_some(), "WWW-Authenticate header must be present");
-        assert_eq!(www_auth.unwrap(), "Bearer");
-    }
-
-    #[test]
-    fn test_other_errors_have_no_www_authenticate_header() {
-        for err in [
-            AppError::bad_request("x", json!({})),
-            AppError::not_found("x", json!({})),
-            AppError::gone("x", json!({})),
-            AppError::conflict("x", json!({})),
-            AppError::internal("x", json!({})),
-        ] {
-            let response = err.into_response();
-            assert!(
-                response.headers().get(axum::http::header::WWW_AUTHENTICATE).is_none(),
-                "WWW-Authenticate must not appear for non-Unauthorized errors"
-            );
-        }
-    }
-
-    // ── to_error_info codes ───────────────────────────────────────────────────
-
-    #[test]
-    fn test_to_error_info_codes() {
-        assert_eq!(AppError::bad_request("x", json!({})).to_error_info().code, "validation_error");
-        assert_eq!(AppError::not_found("x", json!({})).to_error_info().code, "not_found");
-        assert_eq!(AppError::gone("x", json!({})).to_error_info().code, "gone");
-        assert_eq!(AppError::conflict("x", json!({})).to_error_info().code, "conflict");
-        assert_eq!(AppError::unauthorized("x", json!({})).to_error_info().code, "unauthorized");
-        assert_eq!(AppError::internal("x", json!({})).to_error_info().code, "internal_error");
-    }
-
-    // ── Display ───────────────────────────────────────────────────────────────
-
-    #[test]
-    fn test_display_includes_message() {
-        assert!(AppError::bad_request("bad input", json!({})).to_string().contains("bad input"));
-        assert!(AppError::not_found("missing", json!({})).to_string().contains("missing"));
-        assert!(AppError::gone("deleted", json!({})).to_string().contains("deleted"));
-        assert!(AppError::conflict("dup", json!({})).to_string().contains("dup"));
-        assert!(AppError::unauthorized("denied", json!({})).to_string().contains("denied"));
-        assert!(AppError::internal("crash", json!({})).to_string().contains("crash"));
-    }
-}
-
 impl std::error::Error for AppError {}
 
 impl std::fmt::Display for AppError {
@@ -467,5 +377,162 @@ impl From<ValidationErrors> for AppError {
             message: "Request validation failed".to_string(),
             details,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::StatusCode;
+    use axum::response::IntoResponse;
+
+    fn status(err: AppError) -> StatusCode {
+        err.into_response().status()
+    }
+
+    // ── IntoResponse status codes ─────────────────────────────────────────────
+
+    #[test]
+    fn test_validation_error_is_400() {
+        assert_eq!(
+            status(AppError::bad_request("bad input", json!({}))),
+            StatusCode::BAD_REQUEST
+        );
+    }
+
+    #[test]
+    fn test_not_found_is_404() {
+        assert_eq!(
+            status(AppError::not_found("missing", json!({}))),
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[test]
+    fn test_gone_is_410() {
+        assert_eq!(
+            status(AppError::gone("deleted", json!({}))),
+            StatusCode::GONE
+        );
+    }
+
+    #[test]
+    fn test_conflict_is_409() {
+        assert_eq!(
+            status(AppError::conflict("duplicate", json!({}))),
+            StatusCode::CONFLICT
+        );
+    }
+
+    #[test]
+    fn test_unauthorized_is_401() {
+        assert_eq!(
+            status(AppError::unauthorized("token invalid", json!({}))),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[test]
+    fn test_internal_is_500() {
+        assert_eq!(
+            status(AppError::internal("oops", json!({}))),
+            StatusCode::INTERNAL_SERVER_ERROR
+        );
+    }
+
+    // ── Unauthorized includes WWW-Authenticate header ─────────────────────────
+
+    #[test]
+    fn test_unauthorized_has_www_authenticate_header() {
+        let response = AppError::unauthorized("bad token", json!({})).into_response();
+        let www_auth = response.headers().get(axum::http::header::WWW_AUTHENTICATE);
+        assert!(
+            www_auth.is_some(),
+            "WWW-Authenticate header must be present"
+        );
+        assert_eq!(www_auth.unwrap(), "Bearer");
+    }
+
+    #[test]
+    fn test_other_errors_have_no_www_authenticate_header() {
+        for err in [
+            AppError::bad_request("x", json!({})),
+            AppError::not_found("x", json!({})),
+            AppError::gone("x", json!({})),
+            AppError::conflict("x", json!({})),
+            AppError::internal("x", json!({})),
+        ] {
+            let response = err.into_response();
+            assert!(
+                response
+                    .headers()
+                    .get(axum::http::header::WWW_AUTHENTICATE)
+                    .is_none(),
+                "WWW-Authenticate must not appear for non-Unauthorized errors"
+            );
+        }
+    }
+
+    // ── to_error_info codes ───────────────────────────────────────────────────
+
+    #[test]
+    fn test_to_error_info_codes() {
+        assert_eq!(
+            AppError::bad_request("x", json!({})).to_error_info().code,
+            "validation_error"
+        );
+        assert_eq!(
+            AppError::not_found("x", json!({})).to_error_info().code,
+            "not_found"
+        );
+        assert_eq!(AppError::gone("x", json!({})).to_error_info().code, "gone");
+        assert_eq!(
+            AppError::conflict("x", json!({})).to_error_info().code,
+            "conflict"
+        );
+        assert_eq!(
+            AppError::unauthorized("x", json!({})).to_error_info().code,
+            "unauthorized"
+        );
+        assert_eq!(
+            AppError::internal("x", json!({})).to_error_info().code,
+            "internal_error"
+        );
+    }
+
+    // ── Display ───────────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_display_includes_message() {
+        assert!(
+            AppError::bad_request("bad input", json!({}))
+                .to_string()
+                .contains("bad input")
+        );
+        assert!(
+            AppError::not_found("missing", json!({}))
+                .to_string()
+                .contains("missing")
+        );
+        assert!(
+            AppError::gone("deleted", json!({}))
+                .to_string()
+                .contains("deleted")
+        );
+        assert!(
+            AppError::conflict("dup", json!({}))
+                .to_string()
+                .contains("dup")
+        );
+        assert!(
+            AppError::unauthorized("denied", json!({}))
+                .to_string()
+                .contains("denied")
+        );
+        assert!(
+            AppError::internal("crash", json!({}))
+                .to_string()
+                .contains("crash")
+        );
     }
 }

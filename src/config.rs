@@ -64,6 +64,12 @@ pub struct Config {
     /// HMAC signing secret used to hash API tokens before storage.
     /// Loaded from `TOKEN_SIGNING_SECRET`. Must be non-empty.
     pub token_signing_secret: String,
+    /// When true, the dashboard auth cookie is marked `Secure` (sent over HTTPS only).
+    /// Loaded from `COOKIE_SECURE` (default: `true`). Set to `false` for local HTTP development.
+    pub cookie_secure: bool,
+    /// When true, refuse to shorten URLs pointing at private/loopback/link-local
+    /// hosts (or `localhost`). Loaded from `BLOCK_PRIVATE_URLS` (default: `true`).
+    pub block_private_urls: bool,
 
     // ── PgPool settings ─────────────────────────────────────────────────────
     /// Maximum number of connections in the pool (`DB_MAX_CONNECTIONS`, default: 10).
@@ -119,6 +125,14 @@ impl Config {
         let token_signing_secret =
             env::var("TOKEN_SIGNING_SECRET").context("TOKEN_SIGNING_SECRET must be set")?;
 
+        let cookie_secure = env::var("COOKIE_SECURE")
+            .map(|v| !(v.eq_ignore_ascii_case("false") || v == "0"))
+            .unwrap_or(true);
+
+        let block_private_urls = env::var("BLOCK_PRIVATE_URLS")
+            .map(|v| !(v.eq_ignore_ascii_case("false") || v == "0"))
+            .unwrap_or(true);
+
         let db_max_connections = env::var("DB_MAX_CONNECTIONS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -150,6 +164,8 @@ impl Config {
             cache_ttl_seconds,
             click_worker_concurrency,
             token_signing_secret,
+            cookie_secure,
+            block_private_urls,
             db_max_connections,
             db_connect_timeout,
             db_idle_timeout,
@@ -407,6 +423,8 @@ mod tests {
             cache_ttl_seconds: 3600,
             click_worker_concurrency: 4,
             token_signing_secret: "test-secret".to_string(),
+            cookie_secure: true,
+            block_private_urls: true,
             db_max_connections: 10,
             db_connect_timeout: 30,
             db_idle_timeout: 600,
@@ -444,6 +462,9 @@ mod tests {
     fn test_load_database_url_from_components() {
         // SAFETY: Tests are run serially due to #[serial], so no concurrent access
         unsafe {
+            // Ensure the higher-priority var is absent so component-building is exercised
+            // deterministically even when DATABASE_URL is set in the ambient environment.
+            env::remove_var("DATABASE_URL");
             env::set_var("DB_HOST", "testhost");
             env::set_var("DB_PORT", "5433");
             env::set_var("DB_USER", "testuser");
@@ -470,6 +491,9 @@ mod tests {
     fn test_load_redis_url_from_components() {
         // SAFETY: Tests are run serially due to #[serial], so no concurrent access
         unsafe {
+            // Ensure the higher-priority var is absent so component-building is exercised
+            // deterministically even when REDIS_URL is set in the ambient environment.
+            env::remove_var("REDIS_URL");
             env::set_var("REDIS_HOST", "redis-host");
             env::set_var("REDIS_PORT", "6380");
             env::set_var("REDIS_DB", "1");
@@ -557,6 +581,8 @@ mod tests {
             cache_ttl_seconds: 3600,
             click_worker_concurrency: 4,
             token_signing_secret: "test-secret".to_string(),
+            cookie_secure: true,
+            block_private_urls: true,
             db_max_connections: 10,
             db_connect_timeout: 30,
             db_idle_timeout: 600,
