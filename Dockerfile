@@ -1,12 +1,14 @@
 # ---------- chef stage ----------
-FROM rust:1.93-slim-bookworm AS chef
+FROM rust:1.96-slim-bookworm AS chef
 WORKDIR /app
-RUN cargo install cargo-chef --version 0.1.68 --locked
+RUN cargo install cargo-chef --version 0.1.77 --locked
 
 # ---------- planner stage ----------
 FROM chef AS planner
-# Only manifests needed — no source required for recipe generation
+# `cargo chef prepare` runs `cargo metadata`, which requires the crate targets to
+# exist — so the source tree is needed here, not just the manifests.
 COPY Cargo.toml Cargo.lock ./
+COPY src ./src
 RUN cargo chef prepare --recipe-path recipe.json
 
 # ---------- builder stage ----------
@@ -16,9 +18,10 @@ COPY --from=planner /app/recipe.json recipe.json
 # Build only dependencies (cached layer)
 RUN cargo chef cook --release --locked --recipe-path recipe.json
 
-# Copy source, migrations, and sqlx query cache
-# Templates are in src/web/templates/ per askama.toml, included via COPY src ./src
-COPY Cargo.toml Cargo.lock ./
+# Copy source, manifests, migrations, and sqlx query cache.
+# askama.toml points the template dir at src/web/templates/ (copied via `src`);
+# it must be present or askama falls back to a non-existent `templates/` dir.
+COPY Cargo.toml Cargo.lock askama.toml ./
 COPY src ./src
 COPY migrations ./migrations
 COPY .sqlx ./.sqlx
