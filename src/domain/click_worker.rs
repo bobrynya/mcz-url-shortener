@@ -100,7 +100,7 @@ async fn process_click<S, D, L>(
         transient
     };
 
-    match RetryIf::spawn(strategy, op, on_error).await {
+    match RetryIf::start(strategy, op, on_error).await {
         Ok(()) => {
             metrics::counter!("click_worker_processed_total").increment(1);
             tracing::debug!(
