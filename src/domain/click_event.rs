@@ -1,67 +1,36 @@
 //! Click event model for asynchronous click tracking.
 
-/// An in-memory representation of a click event for async processing.
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// A click event published to Kafka and consumed into ClickHouse.
 ///
-/// Used to pass click information from HTTP handlers to the background worker
-/// via a channel. This decouples the HTTP response from database writes,
-/// allowing fast redirects without blocking.
-///
-/// # Design
-///
-/// - Contains denormalized data (domain name + code) to avoid lookups in handlers
-/// - All client metadata is optional to handle missing headers gracefully
-/// - Cloneable for sending across async boundaries
-///
-/// # Usage Flow
-///
-/// 1. Created in redirect handler with request metadata
-/// 2. Sent to channel (non-blocking)
-/// 3. Processed by [`crate::domain::click_worker::run_click_worker`]
-/// 4. Converted to [`crate::domain::entities::NewClick`] for persistence
-#[derive(Debug, Clone)]
+/// `link_id` is resolved at redirect time (from the loaded link or the cache),
+/// so the consumer never needs to touch PostgreSQL.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClickEvent {
-    pub domain: String,
-    pub code: String,
+    pub link_id: i64,
+    pub ip: Option<String>,
     pub user_agent: Option<String>,
     pub referer: Option<String>,
-    pub ip: Option<String>,
+    pub clicked_at: DateTime<Utc>,
 }
 
 impl ClickEvent {
     /// Creates a new click event.
-    ///
-    /// # Arguments
-    ///
-    /// - `domain` - The domain name serving the short link (e.g., "s.example.com")
-    /// - `code` - The short code that was accessed
-    /// - `ip` - Optional client IP address
-    /// - `user_agent` - Optional User-Agent header
-    /// - `referer` - Optional Referer header
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let event = ClickEvent::new(
-    ///     "s.example.com".to_string(),
-    ///     "abc123".to_string(),
-    ///     Some("192.168.1.1".to_string()),
-    ///     Some("Mozilla/5.0"),
-    ///     Some("https://google.com"),
-    /// );
-    /// ```
     pub fn new(
-        domain: String,
-        code: String,
+        link_id: i64,
         ip: Option<String>,
-        user_agent: Option<&str>,
-        referer: Option<&str>,
+        user_agent: Option<String>,
+        referer: Option<String>,
+        clicked_at: DateTime<Utc>,
     ) -> Self {
         Self {
-            domain,
-            code,
+            link_id,
             ip,
-            user_agent: user_agent.map(|s| s.to_string()),
-            referer: referer.map(|s| s.to_string()),
+            user_agent,
+            referer,
+            clicked_at,
         }
     }
 }
@@ -69,73 +38,51 @@ impl ClickEvent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::TimeZone;
 
-    #[test]
-    fn test_click_event_creation_full() {
-        let event = ClickEvent::new(
-            "s.example.com".to_string(),
-            "abc123".to_string(),
+    fn sample() -> ClickEvent {
+        ClickEvent::new(
+            42,
             Some("192.168.1.1".to_string()),
-            Some("Mozilla/5.0"),
-            Some("https://google.com"),
-        );
-
-        assert_eq!(event.domain, "s.example.com");
-        assert_eq!(event.code, "abc123");
-        assert_eq!(event.ip, Some("192.168.1.1".to_string()));
-        assert_eq!(event.user_agent, Some("Mozilla/5.0".to_string()));
-        assert_eq!(event.referer, Some("https://google.com".to_string()));
+            Some("Mozilla/5.0".to_string()),
+            Some("https://google.com".to_string()),
+            Utc.with_ymd_and_hms(2026, 6, 19, 12, 0, 0).unwrap(),
+        )
     }
 
     #[test]
-    fn test_click_event_creation_minimal() {
-        let event = ClickEvent::new(
-            "short.link".to_string(),
-            "xyz".to_string(),
-            None,
-            None,
-            None,
-        );
-
-        assert_eq!(event.domain, "short.link");
-        assert_eq!(event.code, "xyz");
-        assert!(event.ip.is_none());
-        assert!(event.user_agent.is_none());
-        assert!(event.referer.is_none());
+    fn test_click_event_fields() {
+        let e = sample();
+        assert_eq!(e.link_id, 42);
+        assert_eq!(e.ip.as_deref(), Some("192.168.1.1"));
+        assert_eq!(e.user_agent.as_deref(), Some("Mozilla/5.0"));
+        assert_eq!(e.referer.as_deref(), Some("https://google.com"));
     }
 
     #[test]
-    fn test_click_event_str_conversion() {
-        let user_agent = "Chrome/120";
-        let referer = "https://example.com";
-
-        let event = ClickEvent::new(
-            "d.com".to_string(),
-            "test".to_string(),
-            Some("10.0.0.1".to_string()),
-            Some(user_agent),
-            Some(referer),
-        );
-
-        assert_eq!(event.user_agent.unwrap(), user_agent.to_string());
-        assert_eq!(event.referer.unwrap(), referer.to_string());
+    fn test_click_event_json_round_trip() {
+        let e = sample();
+        let json = serde_json::to_string(&e).unwrap();
+        let back: ClickEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.link_id, e.link_id);
+        assert_eq!(back.ip, e.ip);
+        assert_eq!(back.user_agent, e.user_agent);
+        assert_eq!(back.referer, e.referer);
+        assert_eq!(back.clicked_at, e.clicked_at);
     }
 
     #[test]
-    fn test_click_event_clone() {
-        let event = ClickEvent::new(
-            "s.com".to_string(),
-            "code1".to_string(),
-            Some("1.1.1.1".to_string()),
-            Some("Safari"),
+    fn test_click_event_minimal_serialization() {
+        let e = ClickEvent::new(
+            7,
             None,
+            None,
+            None,
+            Utc.with_ymd_and_hms(2026, 1, 1, 0, 0, 0).unwrap(),
         );
-
-        let cloned = event.clone();
-
-        assert_eq!(cloned.domain, event.domain);
-        assert_eq!(cloned.code, event.code);
-        assert_eq!(cloned.ip, event.ip);
-        assert_eq!(cloned.user_agent, event.user_agent);
+        let json = serde_json::to_string(&e).unwrap();
+        let back: ClickEvent = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.link_id, 7);
+        assert!(back.ip.is_none());
     }
 }

@@ -1,97 +1,105 @@
-//! Click statistics and analytics service.
+//! Click statistics service: merges Postgres link metadata with ClickHouse analytics.
 
 use std::sync::Arc;
 
-use crate::domain::entities::{Click, NewClick};
-use crate::domain::repositories::{DetailedStats, LinkStats, StatsFilter, StatsRepository};
-use crate::error::AppError;
 use serde_json::json;
+
+use crate::domain::repositories::{
+    ClickStatsReader, DetailedStats, LinkRepository, LinkStats, StatsFilter,
+};
+use crate::error::AppError;
 
 /// Service for retrieving click statistics and analytics.
 ///
-/// Provides both aggregated statistics (total clicks per link) and detailed
-/// click records with filtering by date range and pagination.
-pub struct StatsService<R: StatsRepository> {
-    repository: Arc<R>,
+/// Link metadata is read from Postgres via [`LinkRepository`]; click counts and
+/// individual records come from ClickHouse via [`ClickStatsReader`]. The reader is
+/// held as a trait object so the configured/unconfigured fallback is uniform.
+pub struct StatsService<L: LinkRepository> {
+    reader: Arc<dyn ClickStatsReader>,
+    links: Arc<L>,
 }
 
-impl<R: StatsRepository> StatsService<R> {
+impl<L: LinkRepository> StatsService<L> {
     /// Creates a new statistics service.
-    pub fn new(repository: Arc<R>) -> Self {
-        Self { repository }
+    pub fn new(reader: Arc<dyn ClickStatsReader>, links: Arc<L>) -> Self {
+        Self { reader, links }
     }
 
-    /// Records a click event for a link.
-    ///
-    /// # Note
-    ///
-    /// In production, clicks are typically recorded asynchronously via
-    /// the background worker (`click_worker`). This method exists for
-    /// testing and direct recording scenarios.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AppError::Validation`] if the link does not exist.
-    /// Returns [`AppError::Internal`] on database errors.
-    #[allow(dead_code)]
-    pub async fn record_click(
-        &self,
-        link_id: i64,
-        user_agent: Option<String>,
-        referer: Option<String>,
-        ip: Option<String>,
-    ) -> Result<Click, AppError> {
-        let new_click = NewClick {
-            link_id,
-            user_agent,
-            referer,
-            ip,
-        };
-
-        self.repository.record_click(new_click).await
-    }
-
-    /// Retrieves detailed statistics for a specific short code.
-    ///
-    /// Includes link metadata, total click count, and paginated click records
-    /// with optional date filtering.
+    /// Detailed stats for one short code: metadata from PG, clicks from ClickHouse.
     ///
     /// # Errors
     ///
     /// Returns [`AppError::NotFound`] if no link matches the code.
-    /// Returns [`AppError::Internal`] on database errors.
+    /// Returns [`AppError::ServiceUnavailable`] if ClickHouse is down.
     pub async fn get_detailed_stats(
         &self,
         code: &str,
         filter: StatsFilter,
     ) -> Result<DetailedStats, AppError> {
-        self.repository
-            .get_stats_by_code(code, filter)
-            .await?
-            .ok_or_else(|| AppError::not_found("Statistics not found", json!({ "code": code })))
+        let link = self
+            .links
+            .find_by_code(code, filter.domain_id.unwrap_or(0))
+            .await?;
+
+        // When no domain filter is supplied we still need to resolve by code alone;
+        // find_by_code requires a domain_id, so fall back to a code-only lookup.
+        let link = match link {
+            Some(l) => l,
+            None if filter.domain_id.is_none() => {
+                self.links.find_any_by_code(code).await?.ok_or_else(|| {
+                    AppError::not_found("Statistics not found", json!({ "code": code }))
+                })?
+            }
+            None => {
+                return Err(AppError::not_found(
+                    "Statistics not found",
+                    json!({ "code": code }),
+                ));
+            }
+        };
+
+        let total = self.reader.count_clicks(link.id, &filter).await?;
+        let items = self.reader.list_clicks(link.id, &filter).await?;
+
+        Ok(DetailedStats { link, total, items })
     }
 
-    /// Retrieves aggregated statistics for all links.
-    ///
-    /// Returns a paginated list with total click counts per link, optionally
-    /// filtered by date range and domain.
+    /// Aggregated per-link stats: page links from PG, counts from ClickHouse, merge.
     ///
     /// # Errors
     ///
+    /// Returns [`AppError::ServiceUnavailable`] if ClickHouse is down.
     /// Returns [`AppError::Internal`] on database errors.
     pub async fn get_all_stats(&self, filter: StatsFilter) -> Result<Vec<LinkStats>, AppError> {
-        self.repository.get_all_stats(filter).await
+        let page = (filter.offset / filter.limit.max(1)) + 1;
+        let links = self
+            .links
+            .list(page, filter.limit, filter.domain_id)
+            .await?;
+
+        let ids: Vec<i64> = links.iter().map(|l| l.id).collect();
+        let counts = self.reader.counts_for_links(&ids, &filter).await?;
+
+        Ok(links
+            .into_iter()
+            .map(|l| LinkStats {
+                link_id: l.id,
+                code: l.code,
+                domain: l.domain,
+                long_url: l.long_url,
+                total: counts.get(&l.id).copied().unwrap_or(0),
+                created_at: l.created_at,
+            })
+            .collect())
     }
 
-    /// Counts the total number of links in the system.
-    ///
-    /// Used for pagination metadata.
+    /// Total link count (Postgres), for pagination metadata.
     ///
     /// # Errors
     ///
     /// Returns [`AppError::Internal`] on database errors.
     pub async fn count_all_links(&self) -> Result<i64, AppError> {
-        self.repository.count_all_links().await
+        self.links.count(None).await
     }
 }
 
@@ -99,154 +107,83 @@ impl<R: StatsRepository> StatsService<R> {
 mod tests {
     use super::*;
     use crate::domain::entities::Link;
-    use crate::domain::repositories::MockStatsRepository;
+    use crate::domain::repositories::{MockClickStatsReader, MockLinkRepository};
     use chrono::Utc;
+    use std::collections::HashMap;
 
-    #[tokio::test]
-    async fn test_get_detailed_stats_success() {
-        let mut mock_repo = MockStatsRepository::new();
-
-        let link = Link::new(
-            1,
-            "abc123".to_string(),
+    fn link(id: i64, code: &str) -> Link {
+        Link::new(
+            id,
+            code.to_string(),
             "https://example.com".to_string(),
             Some("s.example.com".to_string()),
             Utc::now(),
             None,
             false,
             None,
+        )
+    }
+
+    #[tokio::test]
+    async fn test_get_all_stats_merges_counts_and_defaults_zero() {
+        let mut links = MockLinkRepository::new();
+        links
+            .expect_list()
+            .returning(|_, _, _| Ok(vec![link(1, "aaa"), link(2, "bbb")]));
+
+        let mut reader = MockClickStatsReader::new();
+        reader.expect_counts_for_links().returning(|_, _| {
+            let mut m = HashMap::new();
+            m.insert(1, 10);
+            Ok(m) // link 2 absent → should default to 0
+        });
+
+        let svc = StatsService::new(
+            Arc::new(reader) as Arc<dyn ClickStatsReader>,
+            Arc::new(links),
         );
+        let out = svc.get_all_stats(StatsFilter::new(0, 25)).await.unwrap();
 
-        let stats = DetailedStats {
-            link: link.clone(),
-            total: 5,
-            items: vec![],
-        };
-
-        mock_repo
-            .expect_get_stats_by_code()
-            .withf(|code, _| code == "abc123")
-            .times(1)
-            .returning(move |_, _| Ok(Some(stats.clone())));
-
-        let service = StatsService::new(Arc::new(mock_repo));
-
-        let filter = StatsFilter::new(0, 10);
-        let result = service.get_detailed_stats("abc123", filter).await;
-
-        assert!(result.is_ok());
-        let stats = result.unwrap();
-        assert_eq!(stats.total, 5);
-        assert_eq!(stats.link.code, "abc123");
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].total, 10);
+        assert_eq!(out[1].total, 0);
     }
 
     #[tokio::test]
     async fn test_get_detailed_stats_not_found() {
-        let mut mock_repo = MockStatsRepository::new();
+        let mut links = MockLinkRepository::new();
+        links.expect_find_by_code().returning(|_, _| Ok(None));
+        links.expect_find_any_by_code().returning(|_| Ok(None));
+        let reader = MockClickStatsReader::new();
 
-        mock_repo
-            .expect_get_stats_by_code()
-            .times(1)
-            .returning(|_, _| Ok(None));
-
-        let service = StatsService::new(Arc::new(mock_repo));
-
-        let filter = StatsFilter::new(0, 10);
-        let result = service.get_detailed_stats("notfound", filter).await;
-
-        assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), AppError::NotFound { .. }));
-    }
-
-    #[tokio::test]
-    async fn test_get_all_stats() {
-        let mut mock_repo = MockStatsRepository::new();
-
-        let link_stats = vec![
-            LinkStats {
-                link_id: 1,
-                code: "abc123".to_string(),
-                domain: Some("s.example.com".to_string()),
-                long_url: "https://example.com".to_string(),
-                total: 10,
-                created_at: Utc::now(),
-            },
-            LinkStats {
-                link_id: 2,
-                code: "xyz789".to_string(),
-                domain: Some("s.example.com".to_string()),
-                long_url: "https://test.com".to_string(),
-                total: 5,
-                created_at: Utc::now(),
-            },
-        ];
-
-        mock_repo
-            .expect_get_all_stats()
-            .times(1)
-            .returning(move |_| Ok(link_stats.clone()));
-
-        let service = StatsService::new(Arc::new(mock_repo));
-
-        let filter = StatsFilter::new(0, 10);
-        let result = service.get_all_stats(filter).await;
-
-        assert!(result.is_ok());
-        let stats = result.unwrap();
-        assert_eq!(stats.len(), 2);
-        assert_eq!(stats[0].code, "abc123");
-        assert_eq!(stats[1].code, "xyz789");
-    }
-
-    #[tokio::test]
-    async fn test_count_all_links() {
-        let mut mock_repo = MockStatsRepository::new();
-
-        mock_repo
-            .expect_count_all_links()
-            .times(1)
-            .returning(|| Ok(42));
-
-        let service = StatsService::new(Arc::new(mock_repo));
-
-        let result = service.count_all_links().await;
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 42);
-    }
-
-    #[tokio::test]
-    async fn test_record_click() {
-        let mut mock_repo = MockStatsRepository::new();
-
-        let click = crate::domain::entities::Click::new(
-            1,
-            10,
-            Utc::now(),
-            Some("Mozilla/5.0".to_string()),
-            None,
-            Some("192.168.1.1".to_string()),
+        let svc = StatsService::new(
+            Arc::new(reader) as Arc<dyn ClickStatsReader>,
+            Arc::new(links),
         );
+        let err = svc
+            .get_detailed_stats("missing", StatsFilter::new(0, 25))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, AppError::NotFound { .. }));
+    }
 
-        mock_repo
-            .expect_record_click()
-            .times(1)
-            .returning(move |_| Ok(click.clone()));
+    #[tokio::test]
+    async fn test_get_detailed_stats_reader_unavailable_propagates_503() {
+        let mut links = MockLinkRepository::new();
+        links
+            .expect_find_by_code()
+            .returning(|_, _| Ok(Some(link(1, "aaa"))));
+        let mut reader = MockClickStatsReader::new();
+        reader
+            .expect_count_clicks()
+            .returning(|_, _| Err(AppError::service_unavailable("down", serde_json::json!({}))));
 
-        let service = StatsService::new(Arc::new(mock_repo));
-
-        let result = service
-            .record_click(
-                10,
-                Some("Mozilla/5.0".to_string()),
-                None,
-                Some("192.168.1.1".to_string()),
-            )
-            .await;
-
-        assert!(result.is_ok());
-        let recorded = result.unwrap();
-        assert_eq!(recorded.link_id, 10);
-        assert_eq!(recorded.user_agent, Some("Mozilla/5.0".to_string()));
+        let filter = StatsFilter::new(0, 25).with_domain(Some(1));
+        let svc = StatsService::new(
+            Arc::new(reader) as Arc<dyn ClickStatsReader>,
+            Arc::new(links),
+        );
+        let err = svc.get_detailed_stats("aaa", filter).await.unwrap_err();
+        assert!(matches!(err, AppError::ServiceUnavailable { .. }));
     }
 }

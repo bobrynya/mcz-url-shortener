@@ -10,7 +10,9 @@ services:
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      # postgres:18+ expects a single mount at /var/lib/postgresql; data lives in a
+      # major-version subdirectory. The older /var/lib/postgresql/data path is rejected.
+      - postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -67,7 +69,21 @@ services:
       LISTEN: 0.0.0.0:8000
       RUST_LOG: ${RUST_LOG:-info}
       LOG_FORMAT: ${LOG_FORMAT:-text}
-      CLICK_QUEUE_CAPACITY: ${CLICK_QUEUE_CAPACITY:-10000}
+
+      # Kafka (click events)
+      KAFKA_BROKERS: kafka:9092
+      KAFKA_CLICKS_TOPIC: clicks
+      KAFKA_CONSUMER_GROUP: url_shortener_clicks
+
+      # ClickHouse (click analytics)
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_DATABASE: url_shortener
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+
+      # Click ingestion batching
+      CLICK_BATCH_SIZE: "500"
+      CLICK_BATCH_FLUSH_MS: "1000"
     ports:
       - "${PORT:-3000}:8000"
     depends_on:
@@ -75,6 +91,10 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      kafka:
+        condition: service_started
+      clickhouse:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -94,8 +114,69 @@ services:
     networks:
       - app_network
 
+  kafka:
+    image: apache/kafka:4.3.0
+    container_name: url_shortener_kafka
+    environment:
+      # Official Apache Kafka image (KRaft-only, single combined broker+controller node).
+      # KAFKA_* vars map directly to server.properties keys.
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      # Two PLAINTEXT listeners: PLAINTEXT (kafka:9092) for in-network clients
+      # (the app container), EXTERNAL (localhost:29092) for host clients such as
+      # `cargo run` against this compose stack.
+      KAFKA_LISTENERS: "PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:29092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - app_network
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:26.5.1.882-alpine
+    container_name: url_shortener_clickhouse
+    environment:
+      CLICKHOUSE_DB: url_shortener
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: ""
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./docker/clickhouse/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      # Use 127.0.0.1, not localhost: the image has IPv6 disabled and ClickHouse
+      # binds only IPv4, so localhost (→ ::1) is refused.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8123/ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - app_network
+
 volumes:
   postgres_data:
+  clickhouse_data:
 
 networks:
   app_network:

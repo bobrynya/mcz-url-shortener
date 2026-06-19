@@ -15,7 +15,7 @@ use url_shortener::api::handlers::{delete_link_handler, update_link_handler};
 /// header.  In every test we set `Host: s.example.com` — the default domain
 /// seeded by migrations.
 fn make_server(pool: PgPool) -> TestServer {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/links/{code}", patch(update_link_handler))
         .route("/api/links/{code}", delete(delete_link_handler))

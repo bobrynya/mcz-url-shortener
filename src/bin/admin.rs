@@ -395,17 +395,16 @@ async fn revoke_token(repo: Arc<PgTokenRepository>, name_or_hash: String) -> Res
 ///
 /// Shows:
 /// - Total number of links
-/// - Total number of clicks
 /// - Number of active API tokens
+///
+/// Click totals are no longer sourced from PostgreSQL: clicks now live in
+/// ClickHouse (the `link_clicks` table was dropped), which this admin tool does
+/// not connect to. Use the `/api/stats` endpoint for click analytics.
 async fn handle_stats(pool: &PgPool) -> Result<()> {
     println!("{}", "📊 Statistics".bright_blue().bold());
     println!();
 
     let links_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM links")
-        .fetch_one(pool)
-        .await?;
-
-    let clicks_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM link_clicks")
         .fetch_one(pool)
         .await?;
 
@@ -419,12 +418,12 @@ async fn handle_stats(pool: &PgPool) -> Result<()> {
         links_count.to_string().bright_green().bold()
     );
     println!(
-        "  Clicks:        {}",
-        clicks_count.to_string().bright_green().bold()
-    );
-    println!(
         "  Active tokens: {}",
         tokens_count.to_string().bright_green().bold()
+    );
+    println!(
+        "  Clicks:        {}",
+        "see /api/stats (ClickHouse)".dimmed()
     );
     println!();
 

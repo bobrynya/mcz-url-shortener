@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n            SELECT COUNT(*) as count\n            FROM links\n            ",
+  "query": "SELECT id FROM links WHERE code = 'clickme'",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "count",
+        "name": "id",
         "type_info": "Int8"
       }
     ],
@@ -13,8 +13,8 @@
       "Left": []
     },
     "nullable": [
-      null
+      false
     ]
   },
-  "hash": "0599c12ada63c9b9aaa39d6384414a4f7449b26d989c8969468aa198ccc0e91e"
+  "hash": "2aa79d1a17a02787503d96581179ad98b7f1d3611df4ee6e2a6db636bdc50107"
 }

@@ -1,6 +1,10 @@
 # ---------- chef stage ----------
 FROM rust:1.96-slim-bookworm AS chef
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    cmake g++ make \
+    libssl-dev libsasl2-dev libcurl4-openssl-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
 RUN cargo install cargo-chef --version 0.1.77 --locked
 
 # ---------- planner stage ----------

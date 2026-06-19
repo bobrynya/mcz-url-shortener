@@ -98,6 +98,40 @@ impl LinkRepository for PgLinkRepository {
         }))
     }
 
+    async fn find_any_by_code(&self, code: &str) -> Result<Option<Link>, AppError> {
+        // Resolves a code across all domains; returns the most recently created match.
+        // Does NOT filter deleted_at — caller decides what to do with deleted links.
+        let row = sqlx::query!(
+            r#"
+            SELECT
+                l.id, l.code, l.long_url,
+                d.domain as "domain?",
+                l.expires_at, l.permanent, l.deleted_at, l.created_at
+            FROM links l
+            LEFT JOIN domains d ON d.id = l.domain_id
+            WHERE l.code = $1
+            ORDER BY l.created_at DESC
+            LIMIT 1
+            "#,
+            code
+        )
+        .fetch_optional(self.pool.as_ref())
+        .await?;
+
+        Ok(row.map(|r| {
+            Link::new(
+                r.id,
+                r.code,
+                r.long_url,
+                r.domain,
+                r.created_at,
+                r.expires_at,
+                r.permanent,
+                r.deleted_at,
+            )
+        }))
+    }
+
     async fn find_by_long_url(
         &self,
         long_url: &str,

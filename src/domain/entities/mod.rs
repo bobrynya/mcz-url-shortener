@@ -13,7 +13,7 @@
 //! # Design Pattern
 //!
 //! Entities follow the "New Type" pattern with separate structs for creation:
-//! - `NewLink`, `NewClick`, `NewDomain` - For creating new records
+//! - `NewLink`, `NewDomain` - For creating new records
 //! - `UpdateDomain` - For partial updates
 //!
 //! All entities include unit tests demonstrating their construction and usage.
@@ -22,6 +22,6 @@ pub mod click;
 pub mod domain;
 pub mod link;
 
-pub use click::{Click, NewClick};
+pub use click::Click;
 pub use domain::{Domain, NewDomain, UpdateDomain};
 pub use link::{Link, LinkPatch, NewLink};

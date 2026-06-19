@@ -18,9 +18,13 @@ use crate::state::AppState;
 ///
 /// # Components Checked
 ///
-/// 1. **Database**: Tests default domain query
-/// 2. **Click Queue**: Checks if channel is open and reports capacity
-/// 3. **Cache**: Tests Redis PING
+/// 1. **Database** (critical): Tests default domain query
+/// 2. **Cache** (non-critical): Tests Redis PING
+/// 3. **Kafka** (non-critical): Fetches topic metadata
+/// 4. **ClickHouse** (non-critical): Tests connectivity
+///
+/// Only the database is critical: when it is down the endpoint returns 503.
+/// Any other component being down yields a `degraded` status but still 200.
 ///
 /// # Response
 ///
@@ -29,18 +33,10 @@ use crate::state::AppState;
 ///   "status": "healthy",
 ///   "version": "0.1.0",
 ///   "checks": {
-///     "database": {
-///       "status": "ok",
-///       "message": "Connected, default domain: s.example.com"
-///     },
-///     "click_queue": {
-///       "status": "ok",
-///       "message": "Capacity: 10000"
-///     },
-///     "cache": {
-///       "status": "ok",
-///       "message": "Redis connected"
-///     }
+///     "database": { "status": "ok", "message": "Connected, default domain: s.example.com" },
+///     "cache": { "status": "ok", "message": "Redis connected" },
+///     "kafka": { "status": "ok", "message": "Reachable" },
+///     "clickhouse": { "status": "ok", "message": "Reachable" }
 ///   }
 /// }
 /// ```
@@ -48,26 +44,29 @@ pub async fn health_handler(
     State(state): State<AppState>,
 ) -> Result<Json<HealthResponse>, (StatusCode, Json<HealthResponse>)> {
     let db_check = check_database(&state).await;
-
-    let queue_check = check_click_queue(&state);
-
     let cache_check = check_cache(&state).await;
+    let kafka_check = check_kafka(&state).await;
+    let ch_check = check_clickhouse(&state).await;
 
-    let all_healthy =
-        db_check.status == "ok" && queue_check.status == "ok" && cache_check.status == "ok";
+    let critical_ok = db_check.status == "ok";
+    let all_ok = critical_ok
+        && cache_check.status == "ok"
+        && kafka_check.status == "ok"
+        && ch_check.status == "ok";
 
     let response = HealthResponse {
-        status: if all_healthy { "healthy" } else { "degraded" }.to_string(),
+        status: if all_ok { "healthy" } else { "degraded" }.to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         checks: HealthChecks {
             database: db_check,
-            click_queue: queue_check,
             cache: cache_check,
+            kafka: kafka_check,
+            clickhouse: ch_check,
         },
     };
 
-    if all_healthy {
-        Ok(Json(response))
+    if critical_ok {
+        Ok(Json(response)) // 200 even when degraded
     } else {
         Err((StatusCode::SERVICE_UNAVAILABLE, Json(response)))
     }
@@ -87,17 +86,32 @@ async fn check_database(state: &AppState) -> CheckStatus {
     }
 }
 
-/// Checks if the click tracking queue is operational.
-fn check_click_queue(state: &AppState) -> CheckStatus {
-    if state.click_sender.is_closed() {
+/// Checks Kafka connectivity by fetching topic metadata (non-critical).
+async fn check_kafka(state: &AppState) -> CheckStatus {
+    if state.kafka_health().await {
         CheckStatus {
-            status: "error".to_string(),
-            message: Some("Click queue is closed".to_string()),
+            status: "ok".to_string(),
+            message: Some("Reachable".to_string()),
         }
     } else {
         CheckStatus {
+            status: "error".to_string(),
+            message: Some("Kafka unavailable or not configured".to_string()),
+        }
+    }
+}
+
+/// Checks ClickHouse connectivity (non-critical).
+async fn check_clickhouse(state: &AppState) -> CheckStatus {
+    if state.clickhouse_health().await {
+        CheckStatus {
             status: "ok".to_string(),
-            message: Some(format!("Capacity: {}", state.click_sender.capacity())),
+            message: Some("Reachable".to_string()),
+        }
+    } else {
+        CheckStatus {
+            status: "error".to_string(),
+            message: Some("ClickHouse unavailable or not configured".to_string()),
         }
     }
 }

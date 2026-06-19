@@ -39,7 +39,9 @@
 //! - `LISTEN` - Bind address (default: `0.0.0.0:3000`)
 //! - `RUST_LOG` - Log level (default: `info`)
 //! - `LOG_FORMAT` - Log format: `text` or `json` (default: `text`)
-//! - `CLICK_QUEUE_CAPACITY` - Click event buffer size (default: 10000, min: 100)
+//! - `KAFKA_BROKERS` - Kafka bootstrap brokers (enables click publishing if set)
+//! - `CLICKHOUSE_URL` - ClickHouse HTTP URL (enables analytics if set)
+//! - `CLICK_BATCH_SIZE` / `CLICK_BATCH_FLUSH_MS` - Consumer batching controls
 
 use anyhow::{Context, Result};
 use std::env;
@@ -52,15 +54,12 @@ pub struct Config {
     pub listen_addr: String,
     pub log_level: String,
     pub log_format: String,
-    pub click_queue_capacity: usize,
     /// When true, rate limiting reads client IP from X-Forwarded-For / X-Real-IP headers.
     /// Enable only when the service is behind a trusted reverse proxy.
     pub behind_proxy: bool,
     /// Default TTL (seconds) for cached URL mappings in Redis.
     /// Has no effect when Redis is not configured.
     pub cache_ttl_seconds: u64,
-    /// Maximum number of click events processed concurrently by the background worker.
-    pub click_worker_concurrency: usize,
     /// HMAC signing secret used to hash API tokens before storage.
     /// Loaded from `TOKEN_SIGNING_SECRET`. Must be non-empty.
     pub token_signing_secret: String,
@@ -82,6 +81,27 @@ pub struct Config {
     pub db_idle_timeout: u64,
     /// Maximum connection lifetime in seconds (`DB_MAX_LIFETIME`, default: 1800).
     pub db_max_lifetime: u64,
+
+    // ── Kafka / ClickHouse settings ─────────────────────────────────────────
+    /// Kafka bootstrap brokers (`KAFKA_BROKERS`). `None` disables click publishing.
+    pub kafka_brokers: Option<String>,
+    /// Kafka topic for click events (`KAFKA_CLICKS_TOPIC`, default: `clicks`).
+    pub kafka_clicks_topic: String,
+    /// Kafka consumer group for the click ingestion consumer
+    /// (`KAFKA_CONSUMER_GROUP`, default: `url_shortener_clicks`).
+    pub kafka_consumer_group: String,
+    /// ClickHouse HTTP URL (`CLICKHOUSE_URL`). `None` disables analytics reads/ingestion.
+    pub clickhouse_url: Option<String>,
+    /// ClickHouse database name (`CLICKHOUSE_DATABASE`, default: `url_shortener`).
+    pub clickhouse_database: String,
+    /// ClickHouse user (`CLICKHOUSE_USER`, default: `default`).
+    pub clickhouse_user: String,
+    /// ClickHouse password (`CLICKHOUSE_PASSWORD`, default: empty).
+    pub clickhouse_password: String,
+    /// Max click events buffered before a batch insert (`CLICK_BATCH_SIZE`, default: 500).
+    pub click_batch_size: usize,
+    /// Max time (ms) before flushing a partial click batch (`CLICK_BATCH_FLUSH_MS`, default: 1000).
+    pub click_batch_flush_ms: u64,
 }
 
 impl Config {
@@ -103,11 +123,6 @@ impl Config {
         let log_level = env::var("RUST_LOG").unwrap_or_else(|_| "info".to_string());
         let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "text".to_string());
 
-        let click_queue_capacity = env::var("CLICK_QUEUE_CAPACITY")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(10_000);
-
         let behind_proxy = env::var("BEHIND_PROXY")
             .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
             .unwrap_or(false);
@@ -116,11 +131,6 @@ impl Config {
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(3600);
-
-        let click_worker_concurrency = env::var("CLICK_WORKER_CONCURRENCY")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(4);
 
         let token_signing_secret =
             env::var("TOKEN_SIGNING_SECRET").context("TOKEN_SIGNING_SECRET must be set")?;
@@ -153,16 +163,33 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(1800);
 
+        let kafka_brokers = env::var("KAFKA_BROKERS").ok().filter(|s| !s.is_empty());
+        let kafka_clicks_topic =
+            env::var("KAFKA_CLICKS_TOPIC").unwrap_or_else(|_| "clicks".to_string());
+        let kafka_consumer_group =
+            env::var("KAFKA_CONSUMER_GROUP").unwrap_or_else(|_| "url_shortener_clicks".to_string());
+        let clickhouse_url = env::var("CLICKHOUSE_URL").ok().filter(|s| !s.is_empty());
+        let clickhouse_database =
+            env::var("CLICKHOUSE_DATABASE").unwrap_or_else(|_| "url_shortener".to_string());
+        let clickhouse_user = env::var("CLICKHOUSE_USER").unwrap_or_else(|_| "default".to_string());
+        let clickhouse_password = env::var("CLICKHOUSE_PASSWORD").unwrap_or_default();
+        let click_batch_size = env::var("CLICK_BATCH_SIZE")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(500usize);
+        let click_batch_flush_ms = env::var("CLICK_BATCH_FLUSH_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1000u64);
+
         Ok(Self {
             database_url,
             redis_url,
             listen_addr,
             log_level,
             log_format,
-            click_queue_capacity,
             behind_proxy,
             cache_ttl_seconds,
-            click_worker_concurrency,
             token_signing_secret,
             cookie_secure,
             block_private_urls,
@@ -170,6 +197,15 @@ impl Config {
             db_connect_timeout,
             db_idle_timeout,
             db_max_lifetime,
+            kafka_brokers,
+            kafka_clicks_topic,
+            kafka_consumer_group,
+            clickhouse_url,
+            clickhouse_database,
+            clickhouse_user,
+            clickhouse_password,
+            click_batch_size,
+            click_batch_flush_ms,
         })
     }
 
@@ -238,25 +274,10 @@ impl Config {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - `click_queue_capacity` is less than 100
     /// - `log_format` is not `text` or `json`
     /// - `listen_addr` is invalid
+    /// - `click_batch_size` is out of range or `click_batch_flush_ms` is zero
     pub fn validate(&self) -> Result<()> {
-        // Validate queue capacity
-        if self.click_queue_capacity < 100 {
-            anyhow::bail!(
-                "CLICK_QUEUE_CAPACITY must be at least 100, got {}",
-                self.click_queue_capacity
-            );
-        }
-
-        if self.click_queue_capacity > 1_000_000 {
-            anyhow::bail!(
-                "CLICK_QUEUE_CAPACITY is too large (max: 1000000), got {}",
-                self.click_queue_capacity
-            );
-        }
-
         // Validate log format
         if self.log_format != "text" && self.log_format != "json" {
             anyhow::bail!(
@@ -299,12 +320,15 @@ impl Config {
             anyhow::bail!("CACHE_TTL_SECONDS must be greater than 0");
         }
 
-        // Validate click worker concurrency
-        if self.click_worker_concurrency == 0 || self.click_worker_concurrency > 256 {
+        // Validate click batch settings
+        if self.click_batch_size == 0 || self.click_batch_size > 100_000 {
             anyhow::bail!(
-                "CLICK_WORKER_CONCURRENCY must be between 1 and 256, got {}",
-                self.click_worker_concurrency
+                "CLICK_BATCH_SIZE must be between 1 and 100000, got {}",
+                self.click_batch_size
             );
+        }
+        if self.click_batch_flush_ms == 0 {
+            anyhow::bail!("CLICK_BATCH_FLUSH_MS must be greater than 0");
         }
 
         // Validate token signing secret
@@ -340,9 +364,29 @@ impl Config {
             tracing::info!("  Redis: disabled");
         }
 
+        if let Some(ref brokers) = self.kafka_brokers {
+            tracing::info!(
+                "  Kafka brokers: {} (topic: {})",
+                brokers,
+                self.kafka_clicks_topic
+            );
+        } else {
+            tracing::info!("  Kafka: disabled");
+        }
+
+        if let Some(ref url) = self.clickhouse_url {
+            tracing::info!("  ClickHouse: {} (enabled)", mask_connection_string(url));
+        } else {
+            tracing::info!("  ClickHouse: disabled");
+        }
+
         tracing::info!("  Log level: {}", self.log_level);
         tracing::info!("  Log format: {}", self.log_format);
-        tracing::info!("  Click queue capacity: {}", self.click_queue_capacity);
+        tracing::info!(
+            "  Click batch: size={} flush={}ms",
+            self.click_batch_size,
+            self.click_batch_flush_ms
+        );
     }
 }
 
@@ -418,10 +462,8 @@ mod tests {
             listen_addr: "0.0.0.0:3000".to_string(),
             log_level: "info".to_string(),
             log_format: "text".to_string(),
-            click_queue_capacity: 10_000,
             behind_proxy: false,
             cache_ttl_seconds: 3600,
-            click_worker_concurrency: 4,
             token_signing_secret: "test-secret".to_string(),
             cookie_secure: true,
             block_private_urls: true,
@@ -429,15 +471,18 @@ mod tests {
             db_connect_timeout: 30,
             db_idle_timeout: 600,
             db_max_lifetime: 1800,
+            kafka_brokers: None,
+            kafka_clicks_topic: "clicks".to_string(),
+            kafka_consumer_group: "url_shortener_clicks".to_string(),
+            clickhouse_url: None,
+            clickhouse_database: "url_shortener".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+            click_batch_size: 500,
+            click_batch_flush_ms: 1000,
         };
 
         assert!(config.validate().is_ok());
-
-        // Test invalid queue capacity
-        config.click_queue_capacity = 50;
-        assert!(config.validate().is_err());
-
-        config.click_queue_capacity = 10_000;
 
         // Test invalid log format
         config.log_format = "invalid".to_string();
@@ -576,10 +621,8 @@ mod tests {
             listen_addr: "0.0.0.0:3000".to_string(),
             log_level: "info".to_string(),
             log_format: "text".to_string(),
-            click_queue_capacity: 10_000,
             behind_proxy: false,
             cache_ttl_seconds: 3600,
-            click_worker_concurrency: 4,
             token_signing_secret: "test-secret".to_string(),
             cookie_secure: true,
             block_private_urls: true,
@@ -587,13 +630,38 @@ mod tests {
             db_connect_timeout: 30,
             db_idle_timeout: 600,
             db_max_lifetime: 1800,
+            kafka_brokers: None,
+            kafka_clicks_topic: "clicks".to_string(),
+            kafka_consumer_group: "url_shortener_clicks".to_string(),
+            clickhouse_url: None,
+            clickhouse_database: "url_shortener".to_string(),
+            clickhouse_user: "default".to_string(),
+            clickhouse_password: String::new(),
+            click_batch_size: 500,
+            click_batch_flush_ms: 1000,
         }
     }
 
     #[test]
-    fn test_validate_click_queue_capacity_too_large() {
+    fn test_validate_click_batch_size_bounds() {
         let mut c = base_config();
-        c.click_queue_capacity = 1_000_001;
+        c.click_batch_size = 0;
+        assert!(c.validate().is_err());
+
+        c.click_batch_size = 100_001;
+        assert!(c.validate().is_err());
+
+        c.click_batch_size = 1;
+        assert!(c.validate().is_ok());
+
+        c.click_batch_size = 100_000;
+        assert!(c.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_click_batch_flush_ms_zero() {
+        let mut c = base_config();
+        c.click_batch_flush_ms = 0;
         assert!(c.validate().is_err());
     }
 
@@ -619,22 +687,6 @@ mod tests {
         let mut c = base_config();
         c.cache_ttl_seconds = 0;
         assert!(c.validate().is_err());
-    }
-
-    #[test]
-    fn test_validate_click_worker_concurrency_bounds() {
-        let mut c = base_config();
-        c.click_worker_concurrency = 0;
-        assert!(c.validate().is_err());
-
-        c.click_worker_concurrency = 257;
-        assert!(c.validate().is_err());
-
-        c.click_worker_concurrency = 1;
-        assert!(c.validate().is_ok());
-
-        c.click_worker_concurrency = 256;
-        assert!(c.validate().is_ok());
     }
 
     #[test]

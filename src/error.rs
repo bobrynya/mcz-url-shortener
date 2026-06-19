@@ -59,6 +59,7 @@ pub enum AppError {
     Conflict { message: String, details: Value },
     Unauthorized { message: String, details: Value },
     Internal { message: String, details: Value },
+    ServiceUnavailable { message: String, details: Value },
 }
 
 impl AppError {
@@ -110,6 +111,14 @@ impl AppError {
         }
     }
 
+    /// Creates a service unavailable error (503) for non-critical dependency outages.
+    pub fn service_unavailable(message: impl Into<String>, details: Value) -> Self {
+        Self::ServiceUnavailable {
+            message: message.into(),
+            details,
+        }
+    }
+
     /// Converts the error into structured error info for serialization.
     pub fn to_error_info(self) -> ErrorInfo {
         let (code, message, details) = match self {
@@ -119,6 +128,9 @@ impl AppError {
             AppError::Conflict { message, details } => ("conflict", message, details),
             AppError::Unauthorized { message, details } => ("unauthorized", message, details),
             AppError::Internal { message, details } => ("internal_error", message, details),
+            AppError::ServiceUnavailable { message, details } => {
+                ("service_unavailable", message, details)
+            }
         };
 
         ErrorInfo {
@@ -158,6 +170,13 @@ impl IntoResponse for AppError {
             AppError::Internal { message, details } => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "internal_error",
+                message,
+                details,
+                false,
+            ),
+            AppError::ServiceUnavailable { message, details } => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "service_unavailable",
                 message,
                 details,
                 false,
@@ -235,16 +254,8 @@ pub fn map_sqlx_error(e: SqlxError) -> AppError {
                     .increment(1);
 
                 let constraint = db_err.constraint().unwrap_or("unknown");
-                let message = match constraint {
-                    "link_clicks_link_id_fkey" => "The referenced link does not exist",
-                    _ => {
-                        tracing::warn!(
-                            constraint = constraint,
-                            "Unknown foreign key constraint violated"
-                        );
-                        "Referenced resource not found"
-                    }
-                };
+                tracing::warn!(constraint = constraint, "Foreign key constraint violated");
+                let message = "Referenced resource not found";
 
                 return AppError::bad_request(
                     message,
@@ -345,6 +356,9 @@ impl std::fmt::Display for AppError {
             AppError::Conflict { message, .. } => write!(f, "Conflict: {}", message),
             AppError::Unauthorized { message, .. } => write!(f, "Unauthorized: {}", message),
             AppError::Internal { message, .. } => write!(f, "Internal error: {}", message),
+            AppError::ServiceUnavailable { message, .. } => {
+                write!(f, "Service unavailable: {}", message)
+            }
         }
     }
 }
@@ -497,6 +511,26 @@ mod tests {
         assert_eq!(
             AppError::internal("x", json!({})).to_error_info().code,
             "internal_error"
+        );
+    }
+
+    // ── ServiceUnavailable (503) ──────────────────────────────────────────────
+
+    #[test]
+    fn test_service_unavailable_is_503() {
+        assert_eq!(
+            status(AppError::service_unavailable("clickhouse down", json!({}))),
+            StatusCode::SERVICE_UNAVAILABLE
+        );
+    }
+
+    #[test]
+    fn test_service_unavailable_code() {
+        assert_eq!(
+            AppError::service_unavailable("x", json!({}))
+                .to_error_info()
+                .code,
+            "service_unavailable"
         );
     }
 

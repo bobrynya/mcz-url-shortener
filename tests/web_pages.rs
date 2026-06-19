@@ -10,7 +10,7 @@ use url_shortener::web::routes::public_routes;
 /// against breakage on template-engine upgrades.
 #[sqlx::test]
 async fn test_login_page_renders(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .nest("/dashboard", public_routes())
         .with_state(state);
