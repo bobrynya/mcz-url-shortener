@@ -8,7 +8,7 @@ use url_shortener::api::handlers::shorten_handler;
 
 #[sqlx::test]
 async fn test_shorten_single_url_success(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -42,7 +42,7 @@ async fn test_shorten_single_url_success(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_with_custom_code(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -72,7 +72,7 @@ async fn test_shorten_with_custom_code(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_multiple_urls(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -103,7 +103,7 @@ async fn test_shorten_multiple_urls(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_deduplication(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -133,7 +133,7 @@ async fn test_shorten_deduplication(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_invalid_url(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -156,7 +156,7 @@ async fn test_shorten_rejects_private_url(pool: PgPool) {
     // The shared test state mirrors production (block_private_urls = true). A
     // localhost URL is a syntactically valid URL (passes DTO validation) but is
     // rejected by the service, surfacing as a per-item error in the batch.
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -181,7 +181,7 @@ async fn test_shorten_rejects_private_url(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_custom_code_conflict(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -223,7 +223,7 @@ async fn test_shorten_custom_code_conflict(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_mixed_success_and_failure(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -247,7 +247,7 @@ async fn test_shorten_mixed_success_and_failure(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_url_normalization(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);
@@ -274,7 +274,7 @@ async fn test_shorten_url_normalization(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_shorten_partial_failure_reserved_custom_code(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/shorten", post(shorten_handler))
         .with_state(state);

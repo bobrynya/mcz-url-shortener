@@ -43,6 +43,12 @@ pub trait LinkRepository: Send + Sync {
     /// Returns [`AppError::Internal`] on database errors.
     async fn find_by_code(&self, code: &str, domain_id: i64) -> Result<Option<Link>, AppError>;
 
+    /// Finds a link by code across all domains (used by stats when no domain filter).
+    ///
+    /// # Errors
+    /// Returns [`AppError::Internal`] on database errors.
+    async fn find_any_by_code(&self, code: &str) -> Result<Option<Link>, AppError>;
+
     /// Finds a link by its original long URL and domain.
     ///
     /// Used to check if a URL has already been shortened for a specific domain.

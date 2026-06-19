@@ -15,7 +15,7 @@ tailwindcss
 # Contains mutation testing data
 **/mutants.out*/
 
-# Claude Code
+# Claude Code — local/personal files, not tracked
 .claude/
 
 # RustRover

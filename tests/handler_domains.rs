@@ -12,7 +12,7 @@ use url_shortener::api::handlers::{
 };
 
 fn make_server(pool: PgPool) -> TestServer {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/api/domains", get(domain_list_handler))
         .route("/api/domains", post(create_domain_handler))

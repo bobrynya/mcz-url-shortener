@@ -1,8 +1,6 @@
-//! Repository trait for click statistics and analytics.
+//! Value types for click statistics and analytics.
 
-use crate::domain::entities::{Click, NewClick};
-use crate::error::AppError;
-use async_trait::async_trait;
+use crate::domain::entities::Click;
 use chrono::{DateTime, Utc};
 
 /// Aggregated statistics for a single link.
@@ -69,77 +67,4 @@ impl StatsFilter {
         self.to_date = to_date;
         self
     }
-}
-
-/// Repository interface for click tracking and statistics.
-///
-/// Handles both recording click events and querying aggregated statistics
-/// with flexible filtering options.
-///
-/// # Implementations
-///
-/// - [`crate::infrastructure::persistence::PgStatsRepository`] - PostgreSQL implementation
-/// - Test mocks available with `cfg(test)`
-///
-/// # Examples
-///
-/// See integration tests: `tests/repository_stats.rs`
-#[cfg_attr(test, mockall::automock)]
-#[async_trait]
-pub trait StatsRepository: Send + Sync {
-    /// Records a new click event.
-    ///
-    /// Stores metadata like IP address, user agent, and referrer for analytics.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AppError::Validation`] if the referenced link does not exist.
-    /// Returns [`AppError::Internal`] on database errors.
-    async fn record_click(&self, new_click: NewClick) -> Result<Click, AppError>;
-
-    /// Retrieves detailed statistics for a specific short code.
-    ///
-    /// Includes individual click records with pagination and optional filtering.
-    ///
-    /// # Returns
-    ///
-    /// - `Ok(Some(DetailedStats))` if the link exists
-    /// - `Ok(None)` if the link is not found
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AppError::Internal`] on database errors.
-    async fn get_stats_by_code(
-        &self,
-        code: &str,
-        filter: StatsFilter,
-    ) -> Result<Option<DetailedStats>, AppError>;
-
-    /// Retrieves aggregated statistics for all links.
-    ///
-    /// Returns a paginated list with total click counts per link.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AppError::Internal`] on database errors.
-    async fn get_all_stats(&self, filter: StatsFilter) -> Result<Vec<LinkStats>, AppError>;
-
-    /// Counts the total number of links in the system.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AppError::Internal`] on database errors.
-    async fn count_all_links(&self) -> Result<i64, AppError>;
-
-    /// Counts clicks for a specific link within an optional date range.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`AppError::Internal`] on database errors.
-    async fn count_clicks_by_link_id(
-        &self,
-        link_id: i64,
-        from_date: Option<DateTime<Utc>>,
-        to_date: Option<DateTime<Utc>>,
-    ) -> Result<i64, AppError>;
 }

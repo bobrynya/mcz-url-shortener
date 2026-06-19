@@ -2,7 +2,7 @@
 
 Production-ready URL shortener built with Rust using Clean Architecture principles, powered by Axum + SQLx + PostgreSQL.
 
-[![Rust](https://img.shields.io/badge/rust-1.93%2B-orange.svg)](https://www.rust-lang.org/)
+[![Rust](https://img.shields.io/badge/rust-1.96%2B-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 ## Features
@@ -13,7 +13,7 @@ Production-ready URL shortener built with Rust using Clean Architecture principl
 - **Deduplication**: identical normalized URLs receive the same short code per domain
 - **Redirect**: `GET /{code}` performs 301 (permanent) or 307 (temporary) redirect based on link settings
 - **Link Management**: update destination URL, expiry, redirect type; soft-delete and restore via `PATCH /api/links/{code}`
-- **Async Analytics**: clicks recorded via in-memory channel with background worker and exponential backoff retry
+- **Async Analytics**: clicks published to Kafka on redirect (fire-and-forget) and ingested into ClickHouse by a background consumer; counts are eventually consistent (Kafka + batch lag). Kafka/ClickHouse are optional — when absent, clicks are dropped and stats reads return 503.
 
 ### Statistics & Analytics
 - **Link List**: `GET /api/stats` — all links with click counts
@@ -37,8 +37,8 @@ Production-ready URL shortener built with Rust using Clean Architecture principl
 - **Bearer Token Auth**: all API write and read endpoints require authentication
 - **Rate Limiting**: IP-based via tower_governor; proxy-aware via `X-Forwarded-For`/`X-Real-IP`
 - **Structured Errors**: unified JSON error responses with machine-readable codes
-- **Graceful Shutdown**: SIGTERM + Ctrl-C handled; in-flight requests and click worker drain cleanly
-- **Metrics**: Prometheus-compatible counters for click worker events and database errors
+- **Graceful Shutdown**: SIGTERM + Ctrl-C handled; in-flight requests and the Kafka consumer drain cleanly
+- **Metrics**: Prometheus-compatible counters for click pipeline events and database errors
 
 ## Architecture
 
@@ -48,11 +48,11 @@ Built with **Clean Architecture** principles for maximum maintainability and tes
 src/
 ├── lib.rs                     # Dependency composition
 ├── main.rs                    # Entry point
-├── server.rs                  # Server bootstrap (pool, migrations, cache, worker, axum serve)
+├── server.rs                  # Server bootstrap (pool, migrations, cache, Kafka consumer, axum serve)
 ├── error.rs                   # AppError with IntoResponse
 ├── config.rs                  # Config from env vars with validate()
 ├── routes.rs                  # Top-level router (API + web + static)
-├── state.rs                   # AppState (Arc-wrapped services, mpsc sender, cache)
+├── state.rs                   # AppState (Arc-wrapped services, click publisher, cache)
 ├── api/                       # Presentation Layer
 │   ├── routes.rs              # Protected API routes
 │   ├── dto/                   # Request/response models
@@ -69,12 +69,18 @@ src/
 │   └── admin.rs               # CLI tool (token CRUD, domain setup)
 ├── domain/
 │   ├── click_event.rs
-│   ├── click_worker.rs        # Background click processor with JoinSet concurrency
 │   ├── entities/              # Link, Click, Domain
 │   └── repositories/          # Repository trait interfaces (mockall-derived mocks)
+│       ├── click_publisher.rs  # ClickPublisher port (fire-and-forget Kafka publish)
+│       └── click_stats_reader.rs # ClickStatsReader port (ClickHouse aggregates)
 ├── infrastructure/
 │   ├── cache/                 # RedisCache / NullCache
-│   └── persistence/           # PgLinkRepository, PgDomainRepository, PgStatsRepository, PgTokenRepository
+│   ├── messaging/             # Kafka integration
+│   │   ├── kafka_producer.rs  # KafkaClickPublisher + NoopClickPublisher
+│   │   └── click_consumer.rs  # Kafka→ClickHouse batch consumer (background task)
+│   └── persistence/           # PgLinkRepository, PgDomainRepository, PgTokenRepository
+│       ├── clickhouse_client.rs      # Reconnecting ClickHouse client + sink
+│       └── clickhouse_stats_reader.rs # ClickStatsReader backed by ClickHouse
 ├── utils/                     # code_generator, url_normalizer, extract_domain
 └── web/                       # Askama HTML dashboard
     ├── handlers/
@@ -91,7 +97,7 @@ src/
 
 ## Requirements
 
-- **Rust**: stable 1.93+
+- **Rust**: stable 1.96+ (pinned via `rust-toolchain.toml`)
 - **PostgreSQL**: 14+
 - **Redis**: 7+ (optional — falls back to NullCache)
 - **sqlx-cli**: for running migrations
@@ -124,8 +130,15 @@ All configuration is loaded from environment variables or a `.env` file. See `.e
 | `REDIS_URL`               | —        | Redis connection string; disables caching if absent |
 | `REDIS_HOST`              | —        | Redis host (alternative to `REDIS_URL`) |
 | `CACHE_TTL_SECONDS`       | `3600`   | Redis cache TTL for URL mappings |
-| `CLICK_QUEUE_CAPACITY`    | `10000`  | In-memory click event buffer size |
-| `CLICK_WORKER_CONCURRENCY`| `4`      | Max concurrent click DB writes (1–256) |
+| `KAFKA_BROKERS`           | —        | Kafka bootstrap brokers; enables click publishing if set |
+| `KAFKA_CLICKS_TOPIC`      | `clicks` | Kafka topic for click events |
+| `KAFKA_CONSUMER_GROUP`    | `url_shortener_clicks` | Consumer group for the Kafka→ClickHouse ingester |
+| `CLICKHOUSE_URL`          | —        | ClickHouse HTTP URL; enables analytics reads/ingestion if set |
+| `CLICKHOUSE_DATABASE`     | `url_shortener` | ClickHouse database name |
+| `CLICKHOUSE_USER`         | `default` | ClickHouse user |
+| `CLICKHOUSE_PASSWORD`     | —        | ClickHouse password |
+| `CLICK_BATCH_SIZE`        | `500`    | Max click events buffered before a batch insert |
+| `CLICK_BATCH_FLUSH_MS`    | `1000`   | Max time (ms) before flushing a partial click batch |
 | `BEHIND_PROXY`            | `false`  | Use `X-Forwarded-For`/`X-Real-IP` for rate limiting |
 | `DB_MAX_CONNECTIONS`      | `10`     | PostgreSQL connection pool size |
 
@@ -375,7 +388,9 @@ Rejected (400) if the domain is the current default or has existing links.
 
 **`GET /health`**
 
-Response `200 OK` (healthy) or `503 Service Unavailable` (degraded):
+Only the database is critical. `200 OK` is returned even when non-critical
+dependencies (cache, Kafka, ClickHouse) are down — `status` is then `degraded`.
+`503 Service Unavailable` is returned only when the database check fails.
 
 ```json
 {
@@ -383,8 +398,9 @@ Response `200 OK` (healthy) or `503 Service Unavailable` (degraded):
   "version": "0.1.0",
   "checks": {
     "database": { "status": "ok", "message": "Connected, default domain: s.example.com" },
-    "click_queue": { "status": "ok", "message": "Capacity: 10000" },
-    "cache": { "status": "ok", "message": "Redis connected" }
+    "cache": { "status": "ok", "message": "Redis connected" },
+    "kafka": { "status": "ok", "message": "Reachable" },
+    "clickhouse": { "status": "ok", "message": "Reachable" }
   }
 }
 ```
@@ -473,11 +489,14 @@ Built-in Prometheus-compatible counters (exposed at `GET /metrics`):
 
 | Metric | Description |
 |:-------|:------------|
-| `click_worker_received_total` | Click events received by the worker |
-| `click_worker_processed_total` | Events successfully written to DB |
-| `click_worker_failed_total` | Events that exhausted all retries |
-| `click_worker_retried_total` | Total retry attempts |
-| `database_errors_total{type}` | Database errors by type |
+| `click_publish_total` | Click events successfully sent to Kafka |
+| `click_publish_dropped_total{reason}` | Click events dropped before Kafka (reason: `not_configured`, `serialize`, `send`) |
+| `click_consumer_received_total` | Click events consumed from Kafka |
+| `click_consumer_invalid_total` | Kafka messages that failed deserialization |
+| `click_consumer_inserted_total` | Click events successfully batch-inserted into ClickHouse |
+| `click_consumer_insert_failed_total` | ClickHouse batch insert failures |
+| `click_consumer_batch_size` | Histogram of ClickHouse insert batch sizes |
+| `database_errors_total{type}` | PostgreSQL errors by type |
 
 ---
 
@@ -539,16 +558,11 @@ cargo run --bin admin -- list-domains
 
 Unique constraints: `(code, domain_id)` and `(normalized_url, domain_id)`.
 
-**`link_clicks`**
-
-| Column | Type | Notes |
-|:-------|:-----|:------|
-| `id` | `BIGSERIAL` | PK |
-| `link_id` | `BIGINT` | FK → links CASCADE |
-| `clicked_at` | `TIMESTAMPTZ` | |
-| `ip` | `INET` | Nullable |
-| `user_agent` | `TEXT` | Nullable |
-| `referer` | `TEXT` | Nullable |
+**Clicks** are no longer stored in PostgreSQL. The `link_clicks` table was dropped
+(migration `20260620000000_drop_link_clicks.sql`); click events flow through Kafka
+into a ClickHouse `clicks` table (`link_id`, `clicked_at`, `ip`, `user_agent`,
+`referer`) which backs the `/api/stats` endpoints. See
+`docs/superpowers/specs/2026-06-19-clicks-kafka-clickhouse-design.md`.
 
 **`api_tokens`**
 

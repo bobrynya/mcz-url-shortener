@@ -13,7 +13,8 @@
 //! # Available Repositories
 //!
 //! - [`LinkRepository`] - Short link CRUD operations
-//! - [`StatsRepository`] - Click tracking and statistics
+//! - [`ClickStatsReader`] - Click analytics reads (ClickHouse)
+//! - [`ClickPublisher`] - Click event publishing (Kafka)
 //! - [`DomainRepository`] - Domain management
 //! - [`TokenRepository`] - API token authentication
 //!
@@ -21,21 +22,27 @@
 //!
 //! See integration tests in `tests/repository_*.rs` for usage examples.
 
+pub mod click_publisher;
+pub mod click_stats_reader;
 pub mod domain_repository;
 pub mod link_repository;
 pub mod stats_repository;
 pub mod token_repository;
 
+pub use click_publisher::ClickPublisher;
+pub use click_stats_reader::ClickStatsReader;
 pub use domain_repository::DomainRepository;
 pub use link_repository::LinkRepository;
-pub use stats_repository::{DetailedStats, LinkStats, StatsFilter, StatsRepository};
+pub use stats_repository::{DetailedStats, LinkStats, StatsFilter};
 pub use token_repository::{ApiToken, TokenRepository};
 
+#[cfg(test)]
+pub use click_publisher::MockClickPublisher;
+#[cfg(test)]
+pub use click_stats_reader::MockClickStatsReader;
 #[cfg(test)]
 pub use domain_repository::MockDomainRepository;
 #[cfg(test)]
 pub use link_repository::MockLinkRepository;
-#[cfg(test)]
-pub use stats_repository::MockStatsRepository;
 #[cfg(test)]
 pub use token_repository::MockTokenRepository;

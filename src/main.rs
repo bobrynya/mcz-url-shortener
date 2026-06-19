@@ -39,7 +39,7 @@ async fn main() -> Result<()> {
     tracing::info!(
         listen = %cfg.listen_addr,
         log_level = %cfg.log_level,
-        click_queue_capacity = %cfg.click_queue_capacity,
+        click_batch_size = %cfg.click_batch_size,
         "Configuration loaded"
     );
 

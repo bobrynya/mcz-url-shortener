@@ -9,7 +9,6 @@
 //! - [`entities`] - Core business data structures
 //! - [`repositories`] - Data access trait definitions
 //! - [`click_event`] - Click tracking event model
-//! - [`click_worker`] - Asynchronous click processing worker
 //!
 //! # Design Principles
 //!
@@ -20,11 +19,11 @@
 //! # Click Processing Flow
 //!
 //! 1. HTTP handler receives redirect request
-//! 2. [`click_event::ClickEvent`] is sent to async channel
-//! 3. [`click_worker::run_click_worker`] processes events with retry logic
-//! 4. Click data is persisted via [`repositories::StatsRepository`]
+//! 2. [`click_event::ClickEvent`] is published to Kafka via
+//!    [`repositories::ClickPublisher`]
+//! 3. A background consumer batches events into ClickHouse
+//! 4. Analytics are read back via [`repositories::ClickStatsReader`]
 
 pub mod click_event;
-pub mod click_worker;
 pub mod entities;
 pub mod repositories;

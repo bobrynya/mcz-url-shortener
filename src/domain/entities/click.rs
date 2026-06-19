@@ -55,18 +55,6 @@ impl Click {
     }
 }
 
-/// Input data for recording a new click event.
-///
-/// Used when logging a redirect. The `link_id` must reference an existing link,
-/// and the timestamp is automatically set by the database.
-#[derive(Debug, Clone)]
-pub struct NewClick {
-    pub link_id: i64,
-    pub user_agent: Option<String>,
-    pub referer: Option<String>,
-    pub ip: Option<String>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,20 +89,5 @@ mod tests {
         assert!(click.user_agent.is_none());
         assert!(click.referer.is_none());
         assert!(click.ip.is_none());
-    }
-
-    #[test]
-    fn test_new_click_creation() {
-        let new_click = NewClick {
-            link_id: 99,
-            user_agent: Some("Chrome/120".to_string()),
-            referer: None,
-            ip: Some("10.0.0.1".to_string()),
-        };
-
-        assert_eq!(new_click.link_id, 99);
-        assert!(new_click.user_agent.is_some());
-        assert!(new_click.referer.is_none());
-        assert!(new_click.ip.is_some());
     }
 }

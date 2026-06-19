@@ -32,16 +32,16 @@ const TEMPORARY_PREFIX: &str = "0:";
 /// 2. Check cache for URL (cache key: `domain:code`)
 /// 3. On cache miss, query database
 /// 4. Check if link is deleted or expired → 410 Gone
-/// 5. Asynchronously update cache with redirect-type prefix
-/// 6. Send click event to background worker
+/// 5. Asynchronously update cache with redirect-type prefix and link id
+/// 6. Publish click event to Kafka (fire-and-forget)
 /// 7. Return 301 Permanent or 307 Temporary redirect based on link's `permanent` flag
 ///
 /// # Cache Encoding
 ///
-/// Cached values are prefixed to preserve the redirect type:
-/// - `"1:{url}"` → 301 Permanent Redirect
-/// - `"0:{url}"` → 307 Temporary Redirect
-/// - No prefix (legacy) → 307 Temporary Redirect
+/// Cached values are prefixed to preserve the redirect type and carry the link id:
+/// - `"1:{id}|{url}"` → 301 Permanent Redirect
+/// - `"0:{id}|{url}"` → 307 Temporary Redirect
+/// - No prefix (legacy) → 307 Temporary Redirect, `link_id = 0` (click skipped)
 ///
 /// # Errors
 ///
@@ -58,10 +58,11 @@ pub async fn redirect_handler(
 
     let cache_key = format!("{}:{}", domain, code);
 
-    let (long_url, permanent) = match state.cache.get_url(&cache_key).await {
+    let (long_url, permanent, link_id) = match state.cache.get_url(&cache_key).await {
         Ok(Some(cached_value)) => {
             debug!("Cache HIT for {}", cache_key);
-            parse_cached_value(&cached_value)
+            let (link_id, url, permanent) = parse_cached_value(&cached_value);
+            (url, permanent, link_id)
         }
         Ok(None) => {
             debug!("Cache MISS for {}", cache_key);
@@ -69,6 +70,7 @@ pub async fn redirect_handler(
             let link = load_active_link(&state, &domain, &code).await?;
             let url = link.long_url.clone();
             let permanent = link.permanent;
+            let link_id = link.id;
 
             // Cache with redirect-type prefix. Use expiry-aware TTL if applicable.
             let cache_clone = state.cache.clone();
@@ -77,7 +79,7 @@ pub async fn redirect_handler(
                 let secs = (exp - chrono::Utc::now()).num_seconds();
                 secs.max(1) as usize
             });
-            let cached_value = encode_cached_value(&url, permanent);
+            let cached_value = encode_cached_value(link_id, &url, permanent);
             tokio::spawn(async move {
                 if let Err(e) = cache_clone
                     .set_url(&cache_key_clone, &cached_value, ttl)
@@ -87,33 +89,36 @@ pub async fn redirect_handler(
                 }
             });
 
-            (url, permanent)
+            (url, permanent, link_id)
         }
         Err(e) => {
             error!("Cache error: {}", e);
 
             // Fall back to database on cache error.
             let link = load_active_link(&state, &domain, &code).await?;
-            (link.long_url, link.permanent)
+            (link.long_url, link.permanent, link.id)
         }
     };
 
-    // Send click event for async processing.
-    let click_event = ClickEvent::new(
-        domain,
-        code,
-        Some(addr.ip().to_string()),
-        headers
-            .get(header::USER_AGENT)
-            .and_then(|v| v.to_str().ok()),
-        headers.get(header::REFERER).and_then(|v| v.to_str().ok()),
-    );
-
-    if state.click_sender.try_send(click_event).is_err() {
-        // Queue is full or closed — the click is dropped rather than blocking
-        // the redirect. Surface it via metrics so saturation is observable.
-        metrics::counter!("click_enqueue_dropped_total").increment(1);
-        debug!("Click queue full; dropped click event for {}", cache_key);
+    // Publish click event for async processing (fire-and-forget).
+    if link_id > 0 {
+        let event = ClickEvent::new(
+            link_id,
+            Some(addr.ip().to_string()),
+            headers
+                .get(header::USER_AGENT)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from),
+            headers
+                .get(header::REFERER)
+                .and_then(|v| v.to_str().ok())
+                .map(String::from),
+            chrono::Utc::now(),
+        );
+        let publisher = state.click_publisher.clone();
+        tokio::spawn(async move {
+            let _ = publisher.publish(event).await;
+        });
     }
 
     if permanent {
@@ -151,25 +156,62 @@ async fn load_active_link(state: &AppState, domain: &str, code: &str) -> Result<
     Ok(link)
 }
 
-/// Encodes a URL with a redirect-type prefix for caching.
-fn encode_cached_value(url: &str, permanent: bool) -> String {
-    if permanent {
-        format!("{}{}", PERMANENT_PREFIX, url)
+/// Encodes `link_id` + URL with a redirect-type prefix for caching: `"{1:|0:}{id}|{url}"`.
+fn encode_cached_value(link_id: i64, url: &str, permanent: bool) -> String {
+    let p = if permanent {
+        PERMANENT_PREFIX
     } else {
-        format!("{}{}", TEMPORARY_PREFIX, url)
+        TEMPORARY_PREFIX
+    };
+    format!("{}{}|{}", p, link_id, url)
+}
+
+/// Parses a cached value into `(link_id, url, permanent)`.
+///
+/// Handles both prefixed (new) and legacy (no prefix) entries.
+/// Legacy entries without an id yield `link_id = 0` (click is skipped).
+fn parse_cached_value(value: &str) -> (i64, String, bool) {
+    let (permanent, rest) = if let Some(r) = value.strip_prefix(PERMANENT_PREFIX) {
+        (true, r)
+    } else if let Some(r) = value.strip_prefix(TEMPORARY_PREFIX) {
+        (false, r)
+    } else {
+        (false, value)
+    };
+    match rest.split_once('|') {
+        Some((id, url)) => (id.parse().unwrap_or(0), url.to_string(), permanent),
+        None => (0, rest.to_string(), permanent),
     }
 }
 
-/// Parses a cached value, extracting the URL and redirect type.
-///
-/// Handles both prefixed (new) and legacy (no prefix) entries.
-fn parse_cached_value(value: &str) -> (String, bool) {
-    if let Some(url) = value.strip_prefix(PERMANENT_PREFIX) {
-        (url.to_string(), true)
-    } else if let Some(url) = value.strip_prefix(TEMPORARY_PREFIX) {
-        (url.to_string(), false)
-    } else {
-        // Legacy cached entries without prefix → treat as temporary.
-        (value.to_string(), false)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_cache_value_round_trip_permanent() {
+        let encoded = encode_cached_value(42, "https://example.com", true);
+        let (id, url, permanent) = parse_cached_value(&encoded);
+        assert_eq!(id, 42);
+        assert_eq!(url, "https://example.com");
+        assert!(permanent);
+    }
+
+    #[test]
+    fn test_cache_value_round_trip_temporary() {
+        let encoded = encode_cached_value(7, "https://example.org/path|with|pipes", false);
+        let (id, url, permanent) = parse_cached_value(&encoded);
+        assert_eq!(id, 7);
+        assert_eq!(url, "https://example.org/path|with|pipes");
+        assert!(!permanent);
+    }
+
+    #[test]
+    fn test_parse_legacy_value_without_id() {
+        // Legacy entries (no prefix, no id) → link_id 0, temporary.
+        let (id, url, permanent) = parse_cached_value("https://legacy.example.com");
+        assert_eq!(id, 0);
+        assert_eq!(url, "https://legacy.example.com");
+        assert!(!permanent);
     }
 }

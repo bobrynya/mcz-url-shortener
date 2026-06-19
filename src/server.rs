@@ -1,12 +1,16 @@
 //! HTTP server initialization and runtime setup.
 //!
-//! Handles database connections, cache setup, worker spawning, and Axum server lifecycle.
+//! Handles database connections, cache setup, click ingestion wiring, and the
+//! Axum server lifecycle.
 
 use crate::config::Config;
-use crate::domain::click_worker::run_click_worker;
+use crate::domain::repositories::{ClickPublisher, ClickStatsReader};
 use crate::infrastructure::cache::{CacheService, NullCache, RedisCache};
+use crate::infrastructure::messaging::click_consumer::run_click_consumer;
+use crate::infrastructure::messaging::{KafkaClickPublisher, NoopClickPublisher};
 use crate::infrastructure::persistence::{
-    PgDomainRepository, PgLinkRepository, PgStatsRepository, PgTokenRepository,
+    ClickHouseConfig, ClickHouseStatsReader, ClickSink, PgDomainRepository, PgLinkRepository,
+    PgTokenRepository, ReconnectingClickHouse, UnavailableStatsReader,
 };
 use crate::routes::app_router;
 use crate::state::AppState;
@@ -18,22 +22,22 @@ use sqlx::postgres::PgPoolOptions;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 /// Runs the HTTP server with the given configuration.
 ///
 /// Initializes:
 /// - PostgreSQL connection pool and runs pending migrations
 /// - Redis cache (or [`NullCache`] fallback if Redis is unavailable or unconfigured)
-/// - Shared repositories passed to both the click worker and [`AppState`]
-/// - Background click worker for asynchronous click persistence
+/// - Kafka click publisher and ClickHouse stats reader/sink (optional)
+/// - Background Kafka→ClickHouse click consumer (when both are configured)
 /// - Axum HTTP server with graceful shutdown on `SIGTERM` / `Ctrl-C`
 ///
 /// # Shutdown
 ///
 /// On shutdown signal the HTTP server stops accepting new connections and waits
-/// for in-flight requests to complete. Afterwards the click worker drains the
-/// remaining events from its channel before exiting.
+/// for in-flight requests to complete. Afterwards the click consumer is cancelled
+/// and joined.
 ///
 /// # Errors
 ///
@@ -69,30 +73,77 @@ pub async fn run(config: Config) -> Result<()> {
         Arc::new(NullCache::new())
     };
 
-    let (click_tx, click_rx) = mpsc::channel(config.click_queue_capacity);
-
-    // Repositories created once and shared between click worker and AppState.
+    // Repositories created once and shared between the click consumer and AppState.
     let pool_arc = Arc::new(pool);
     let link_repo = Arc::new(PgLinkRepository::new(pool_arc.clone()));
-    let stats_repo = Arc::new(PgStatsRepository::new(pool_arc.clone()));
     let token_repo = Arc::new(PgTokenRepository::new(pool_arc.clone()));
     let domain_repo = Arc::new(PgDomainRepository::new(pool_arc.clone()));
 
-    let worker_handle = tokio::spawn(run_click_worker(
-        click_rx,
-        stats_repo.clone(),
-        domain_repo.clone(),
-        link_repo.clone(),
-        config.click_worker_concurrency,
-    ));
-    tracing::info!("Click worker started");
+    // ClickHouse (read + sink) — optional.
+    let clickhouse: Option<Arc<ReconnectingClickHouse>> =
+        config.clickhouse_url.as_ref().map(|url| {
+            Arc::new(ReconnectingClickHouse::new(ClickHouseConfig {
+                url: url.clone(),
+                database: config.clickhouse_database.clone(),
+                user: config.clickhouse_user.clone(),
+                password: config.clickhouse_password.clone(),
+                retry_interval: Duration::from_secs(30),
+            }))
+        });
+    let stats_reader: Arc<dyn ClickStatsReader> = match &clickhouse {
+        Some(ch) => Arc::new(ClickHouseStatsReader::new(ch.clone())),
+        None => Arc::new(UnavailableStatsReader),
+    };
+
+    // Kafka publisher — optional.
+    let kafka: Option<Arc<KafkaClickPublisher>> = match &config.kafka_brokers {
+        Some(brokers) => {
+            match KafkaClickPublisher::new(brokers, config.kafka_clicks_topic.clone()) {
+                Ok(p) => Some(Arc::new(p)),
+                Err(e) => {
+                    tracing::warn!(error = %e, "Kafka producer init failed; clicks will be dropped");
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+    let click_publisher: Arc<dyn ClickPublisher> = match &kafka {
+        Some(p) => p.clone(),
+        None => Arc::new(NoopClickPublisher),
+    };
+
+    // Spawn the consumer only when both Kafka and ClickHouse are configured.
+    let shutdown_token = CancellationToken::new();
+    let consumer_handle = match (&config.kafka_brokers, &clickhouse) {
+        (Some(brokers), Some(ch)) => {
+            let sink: Arc<dyn ClickSink> = ch.clone();
+            let handle = tokio::spawn(run_click_consumer(
+                brokers.clone(),
+                config.kafka_consumer_group.clone(),
+                config.kafka_clicks_topic.clone(),
+                sink,
+                config.click_batch_size,
+                Duration::from_millis(config.click_batch_flush_ms),
+                shutdown_token.clone(),
+            ));
+            tracing::info!("Click consumer started (Kafka → ClickHouse)");
+            Some(handle)
+        }
+        _ => {
+            tracing::warn!("Kafka and/or ClickHouse not configured; click ingestion disabled");
+            None
+        }
+    };
 
     let state = AppState::new(
         link_repo,
-        stats_repo,
         token_repo,
         domain_repo,
-        click_tx,
+        click_publisher,
+        stats_reader,
+        kafka,
+        clickhouse,
         cache,
         config.token_signing_secret.clone(),
         config.cookie_secure,
@@ -112,11 +163,13 @@ pub async fn run(config: Config) -> Result<()> {
     .with_graceful_shutdown(shutdown_signal())
     .await?;
 
-    // serve() has returned: AppState is dropped, click_tx inside it is dropped.
-    // The worker's channel will drain and then close naturally.
-    tracing::info!("HTTP server stopped, draining click queue...");
-    worker_handle.await.ok();
-    tracing::info!("Click worker stopped, shutdown complete");
+    // serve() has returned: stop the click consumer and wait for it to drain.
+    tracing::info!("HTTP server stopped, shutting down click consumer...");
+    shutdown_token.cancel();
+    if let Some(handle) = consumer_handle {
+        handle.await.ok();
+    }
+    tracing::info!("Click consumer stopped, shutdown complete");
 
     Ok(())
 }

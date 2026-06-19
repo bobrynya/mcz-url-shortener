@@ -14,8 +14,9 @@ pub struct HealthResponse {
 #[derive(Debug, Serialize)]
 pub struct HealthChecks {
     pub database: CheckStatus,
-    pub click_queue: CheckStatus,
     pub cache: CheckStatus,
+    pub kafka: CheckStatus,
+    pub clickhouse: CheckStatus,
 }
 
 /// Individual component health status.

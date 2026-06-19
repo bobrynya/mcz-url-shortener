@@ -1,12 +1,17 @@
 mod common;
 
+use std::net::SocketAddr;
+use std::sync::Arc;
+
 use axum::http::StatusCode;
 use axum::{Router, extract::ConnectInfo, routing::get};
 use axum_test::TestServer;
 use sqlx::PgPool;
-use std::net::SocketAddr;
 use tower::Layer;
 use url_shortener::api::handlers::redirect_handler;
+use url_shortener::infrastructure::persistence::UnavailableStatsReader;
+
+use common::RecordingClickPublisher;
 
 #[derive(Clone)]
 struct MockConnectInfoLayer;
@@ -50,7 +55,7 @@ where
 
 #[sqlx::test]
 async fn test_redirect_success(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool.clone());
+    let state = common::create_test_state(pool.clone());
     let app = Router::new()
         .route("/{code}", get(redirect_handler))
         .layer(MockConnectInfoLayer)
@@ -74,7 +79,7 @@ async fn test_redirect_success(pool: PgPool) {
 
 #[sqlx::test]
 async fn test_redirect_not_found(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/{code}", get(redirect_handler))
         .layer(MockConnectInfoLayer)
@@ -90,9 +95,30 @@ async fn test_redirect_not_found(pool: PgPool) {
     response.assert_status_not_found();
 }
 
+/// Polls the recording publisher until it has captured at least one event.
+///
+/// The redirect handler publishes the click via `tokio::spawn` (fire-and-forget),
+/// so the event may not be recorded by the time the HTTP response returns.
+async fn wait_for_click(
+    publisher: &RecordingClickPublisher,
+) -> url_shortener::domain::click_event::ClickEvent {
+    for _ in 0..100 {
+        if let Some(event) = publisher.events().into_iter().next() {
+            return event;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("no click event was published within the timeout");
+}
+
 #[sqlx::test]
 async fn test_redirect_records_click(pool: PgPool) {
-    let (state, mut rx) = common::create_test_state(pool.clone());
+    let publisher = RecordingClickPublisher::new();
+    let state = common::create_test_state_with(
+        pool.clone(),
+        Arc::new(publisher.clone()),
+        Arc::new(UnavailableStatsReader),
+    );
     let app = Router::new()
         .route("/{code}", get(redirect_handler))
         .layer(MockConnectInfoLayer)
@@ -103,6 +129,11 @@ async fn test_redirect_records_click(pool: PgPool) {
     let domain_id = common::get_default_domain(&pool).await;
     common::create_test_link(&pool, "clickme", "https://example.com", domain_id).await;
 
+    let link_id: i64 = sqlx::query_scalar!("SELECT id FROM links WHERE code = 'clickme'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
     let response = server
         .get("/clickme")
         .add_header("Host", "s.example.com")
@@ -111,14 +142,18 @@ async fn test_redirect_records_click(pool: PgPool) {
 
     assert_eq!(response.status_code(), 307);
 
-    let click_event = rx.try_recv();
-    assert!(click_event.is_ok());
-    assert_eq!(click_event.unwrap().code, "clickme");
+    let event = wait_for_click(&publisher).await;
+    assert_eq!(event.link_id, link_id);
 }
 
 #[sqlx::test]
 async fn test_redirect_with_user_agent_and_referer(pool: PgPool) {
-    let (state, mut rx) = common::create_test_state(pool.clone());
+    let publisher = RecordingClickPublisher::new();
+    let state = common::create_test_state_with(
+        pool.clone(),
+        Arc::new(publisher.clone()),
+        Arc::new(UnavailableStatsReader),
+    );
     let app = Router::new()
         .route("/{code}", get(redirect_handler))
         .layer(MockConnectInfoLayer)
@@ -129,6 +164,11 @@ async fn test_redirect_with_user_agent_and_referer(pool: PgPool) {
     let domain_id = common::get_default_domain(&pool).await;
     common::create_test_link(&pool, "track", "https://example.com", domain_id).await;
 
+    let link_id: i64 = sqlx::query_scalar!("SELECT id FROM links WHERE code = 'track'")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
     let response = server
         .get("/track")
         .add_header("Host", "s.example.com")
@@ -138,17 +178,15 @@ async fn test_redirect_with_user_agent_and_referer(pool: PgPool) {
 
     assert_eq!(response.status_code(), 307);
 
-    let click_event = rx.try_recv();
-    assert!(click_event.is_ok());
-    let event = click_event.unwrap();
-    assert_eq!(event.code, "track");
+    let event = wait_for_click(&publisher).await;
+    assert_eq!(event.link_id, link_id);
     assert_eq!(event.user_agent, Some("Mozilla/5.0".to_string()));
     assert_eq!(event.referer, Some("https://google.com".to_string()));
 }
 
 #[sqlx::test]
 async fn test_redirect_missing_host_header(pool: PgPool) {
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/{code}", get(redirect_handler))
         .layer(MockConnectInfoLayer)
@@ -163,7 +201,7 @@ async fn test_redirect_missing_host_header(pool: PgPool) {
 
 fn make_redirect_server(pool: PgPool) -> TestServer {
     use url_shortener::api::handlers::redirect_handler;
-    let (state, _rx) = common::create_test_state(pool);
+    let state = common::create_test_state(pool);
     let app = Router::new()
         .route("/{code}", get(redirect_handler))
         .layer(MockConnectInfoLayer)

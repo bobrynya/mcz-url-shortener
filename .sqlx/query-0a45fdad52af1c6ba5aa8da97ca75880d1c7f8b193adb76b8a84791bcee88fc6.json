@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id FROM links WHERE code = $1",
+  "query": "SELECT id FROM links WHERE code = 'track'",
   "describe": {
     "columns": [
       {
@@ -10,13 +10,11 @@
       }
     ],
     "parameters": {
-      "Left": [
-        "Text"
-      ]
+      "Left": []
     },
     "nullable": [
       false
     ]
   },
-  "hash": "a06081df4533f9a1b9b5d35a4ca2674672139cf71966a87e89167c91c713bd59"
+  "hash": "0a45fdad52af1c6ba5aa8da97ca75880d1c7f8b193adb76b8a84791bcee88fc6"
 }
