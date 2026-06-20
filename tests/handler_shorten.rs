@@ -273,6 +273,33 @@ async fn test_shorten_url_normalization(pool: PgPool) {
 }
 
 #[sqlx::test]
+async fn test_shorten_with_explicit_domain_id(pool: PgPool) {
+    let domain_id = common::create_test_domain(&pool, "alt.example.com").await;
+    let state = common::create_test_state(pool);
+    let app = Router::new()
+        .route("/api/shorten", post(shorten_handler))
+        .with_state(state);
+    let server = TestServer::new(app).unwrap();
+
+    let response = server
+        .post("/api/shorten")
+        .json(&json!({ "urls": [{ "url": "https://example.com", "domain_id": domain_id }] }))
+        .await;
+
+    response.assert_status_ok();
+    let body = response.json::<serde_json::Value>();
+    assert_eq!(body["summary"]["successful"], 1);
+
+    let short_url = body["items"][0]["short_url"]
+        .as_str()
+        .expect("successful item must have short_url");
+    assert!(
+        short_url.contains("alt.example.com"),
+        "expected alt.example.com in short_url, got {short_url}"
+    );
+}
+
+#[sqlx::test]
 async fn test_shorten_partial_failure_reserved_custom_code(pool: PgPool) {
     let state = common::create_test_state(pool);
     let app = Router::new()

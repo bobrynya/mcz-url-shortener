@@ -94,6 +94,17 @@ impl<R: DomainRepository> DomainService<R> {
         self.repository.get_default().await
     }
 
+    /// Looks up a domain by its primary key.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::NotFound`] if no domain has this id.
+    pub async fn get_domain_by_id(&self, id: i64) -> Result<Domain, AppError> {
+        self.repository.find_by_id(id).await?.ok_or_else(|| {
+            AppError::not_found("Domain not found", serde_json::json!({ "domain_id": id }))
+        })
+    }
+
     /// Sets a domain as the system default (atomic transaction).
     pub async fn set_default(&self, domain_id: i64) -> Result<(), AppError> {
         self.repository.set_default(domain_id).await
@@ -496,5 +507,28 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AppError::Validation { .. }));
+    }
+
+    #[tokio::test]
+    async fn test_get_domain_by_id_found() {
+        let mut repo = MockDomainRepository::new();
+        repo.expect_find_by_id()
+            .withf(|id| *id == 7)
+            .times(1)
+            .returning(|_| Ok(Some(create_test_domain(7, "s.example.com", true))));
+
+        let service = DomainService::new(Arc::new(repo));
+        let domain = service.get_domain_by_id(7).await.unwrap();
+        assert_eq!(domain.id, 7);
+    }
+
+    #[tokio::test]
+    async fn test_get_domain_by_id_not_found() {
+        let mut repo = MockDomainRepository::new();
+        repo.expect_find_by_id().times(1).returning(|_| Ok(None));
+
+        let service = DomainService::new(Arc::new(repo));
+        let err = service.get_domain_by_id(99).await.unwrap_err();
+        assert!(matches!(err, AppError::NotFound { .. }));
     }
 }

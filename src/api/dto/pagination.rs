@@ -44,7 +44,7 @@ impl PaginationParams {
         }
 
         if !(10..=1000).contains(&page_size) {
-            return Err("Page size must be between 10 and 50".to_string());
+            return Err("Page size must be between 10 and 1000".to_string());
         }
 
         let offset = ((page - 1) * page_size) as i64;
@@ -84,6 +84,7 @@ mod optional_rfc3339 {
 }
 
 /// Combined query parameters for statistics endpoints.
+#[serde_as]
 #[derive(Debug, Deserialize)]
 pub struct StatsQueryParams {
     #[serde(flatten)]
@@ -92,7 +93,9 @@ pub struct StatsQueryParams {
     #[serde(flatten)]
     pub date_filter: DateFilterParams,
 
-    pub domain: Option<String>,
+    #[serde_as(as = "Option<DisplayFromStr>")]
+    #[serde(default)]
+    pub domain_id: Option<i64>,
 }
 
 #[cfg(test)]

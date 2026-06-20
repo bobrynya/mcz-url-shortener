@@ -31,4 +31,7 @@ pub struct UpdateLinkRequest {
     /// When true, clears `deleted_at` to restore a soft-deleted link.
     #[serde(default)]
     pub restore: bool,
+
+    /// Target domain id. When omitted, the default domain is used.
+    pub domain_id: Option<i64>,
 }

@@ -26,7 +26,7 @@ use crate::state::AppState;
 /// - `page_size` (optional): Items per page (default: 25, max: 1000)
 /// - `from` (optional): Start date for click filtering (RFC3339 format)
 /// - `to` (optional): End date for click filtering (RFC3339 format)
-/// - `domain` (optional): Filter by domain name
+/// - `domain_id` (optional): Filter by domain id
 ///
 /// # Performance
 ///
@@ -47,12 +47,7 @@ pub async fn stats_list_handler(
     let page = params.pagination.page.unwrap_or(1);
     let page_size = params.pagination.page_size.unwrap_or(25);
 
-    let domain_id = if let Some(domain_name) = &params.domain {
-        let domain = state.domain_service.get_domain(domain_name).await?;
-        Some(domain.id)
-    } else {
-        None
-    };
+    let domain_id = params.domain_id;
 
     let filter = StatsFilter::new(offset, limit)
         .with_domain(domain_id)
@@ -99,7 +94,7 @@ pub async fn stats_list_handler(
 /// - `page_size` (optional): Items per page (default: 25, max: 1000)
 /// - `from` (optional): Start date (RFC3339 format)
 /// - `to` (optional): End date (RFC3339 format)
-/// - `domain` (optional): Filter by domain name
+/// - `domain_id` (optional): Filter by domain id
 ///
 /// # Errors
 ///
@@ -118,12 +113,7 @@ pub async fn stats_handler(
     let page = params.pagination.page.unwrap_or(1);
     let page_size = params.pagination.page_size.unwrap_or(25);
 
-    let domain_id = if let Some(domain_name) = &params.domain {
-        let domain = state.domain_service.get_domain(domain_name).await?;
-        Some(domain.id)
-    } else {
-        None
-    };
+    let domain_id = params.domain_id;
 
     let filter = StatsFilter::new(offset, limit)
         .with_domain(domain_id)

@@ -19,8 +19,12 @@ Production-ready URL shortener built with Rust using Clean Architecture principl
 - **Link List**: `GET /api/stats` — all links with click counts
 - **Detailed Stats**: `GET /api/stats/{code}` — individual link click history with pagination
 - **Date Filtering**: `from` and `to` parameters in RFC3339 format
-- **Domain Filtering**: `domain` query parameter
+- **Domain Filtering**: `domain_id` query parameter (integer)
 - **Click Metadata**: IP address, User-Agent, Referer, timestamp
+
+### Bulk Link Management
+- **Batch Deactivate**: `POST /api/links/batch-deactivate` — soft-delete up to 1000 links in one call; partial success, idempotent
+- **Batch Restore**: `POST /api/links/batch-restore` — un-delete up to 1000 previously deactivated links; partial success, idempotent
 
 ### Domain Management
 - **List Domains**: `GET /api/domains`
@@ -190,6 +194,26 @@ All API endpoints require `Authorization: Bearer <token>` unless noted.
 
 ---
 
+### Domain Selector — Breaking Change
+
+> **Breaking change (Phase 2):** The management API now selects a domain by explicit `domain_id` (integer, from `GET /api/domains`). The previous selectors — domain name string in `POST /shorten`, `Host` header in `PATCH`/`DELETE /links/{code}`, and `?domain=` name query param in stats — have been removed.
+
+| Endpoint | Domain selector |
+|:---------|:----------------|
+| `POST /api/shorten` | per-item `domain_id` (integer, optional → default domain) |
+| `PATCH /api/links/{code}` | body `domain_id` (integer, optional → default domain) |
+| `DELETE /api/links/{code}` | query `?domain_id=` (integer, optional → default domain) |
+| `POST /api/links/batch-deactivate` | body `domain_id` (integer, optional → default domain) |
+| `POST /api/links/batch-restore` | body `domain_id` (integer, optional → default domain) |
+| `GET /api/stats` | query `?domain_id=` (integer, optional → all domains) |
+| `GET /api/stats/{code}` | query `?domain_id=` (integer, optional → cross-domain lookup) |
+
+The **public redirect** (`GET /{code}`) continues to resolve the domain from the `Host` request header — this is unchanged.
+
+Use `GET /api/domains` to look up domain IDs before making management API calls.
+
+---
+
 ### Redirect (Public)
 
 **`GET /{code}`**
@@ -217,13 +241,13 @@ Batch endpoint — processes each URL independently; individual failures don't s
 {
   "urls": [
     { "url": "https://example.com/very/long/path", "custom_code": "promo2024" },
-    { "url": "https://github.com/rust-lang/rust", "domain": "s.example.com" },
+    { "url": "https://github.com/rust-lang/rust", "domain_id": 1 },
     { "url": "https://docs.rs/axum", "expires_at": "2026-12-31T23:59:59Z", "permanent": true }
   ]
 }
 ```
 
-Fields per item: `url` (required), `domain`, `custom_code`, `expires_at`, `permanent`.
+Fields per item: `url` (required), `domain_id` (optional integer — omit to use the default domain), `custom_code`, `expires_at`, `permanent`.
 
 Response `200 OK`:
 
@@ -242,17 +266,17 @@ Response `200 OK`:
 
 **`PATCH /api/links/{code}`**
 
-Host header determines which domain the code belongs to.
-
 All fields optional — only provided fields are changed.
 `expires_at: null` clears the expiry. `restore: true` un-deletes a soft-deleted link.
+`domain_id` selects which domain the code belongs to; omit to use the default domain.
 
 ```json
 {
   "url": "https://new-destination.com",
   "expires_at": "2027-01-01T00:00:00Z",
   "permanent": true,
-  "restore": true
+  "restore": true,
+  "domain_id": 1
 }
 ```
 
@@ -267,9 +291,77 @@ Response `200 OK`: updated link object with `code`, `long_url`, `short_url`, `pe
 Soft-delete — sets `deleted_at`. Subsequent redirects return `410 Gone`.
 Can be restored via `PATCH` with `restore: true`.
 
-Host header determines which domain the code belongs to.
+`?domain_id=<id>` selects which domain the code belongs to; omit to use the default domain.
+
+```bash
+curl -X DELETE http://127.0.0.1:3000/api/links/promo2024?domain_id=1 \
+  -H "Authorization: Bearer <token>"
+```
 
 Response `204 No Content`.
+
+---
+
+### Batch Deactivate Links
+
+**`POST /api/links/batch-deactivate`**
+
+Soft-deletes up to 1000 links in a single request. Partial success — missing or already-deactivated codes are reported as `not_found` and do not fail the request. Idempotent.
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/links/batch-deactivate \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"codes": ["abc123", "xyz456", "missing"], "domain_id": 1}'
+```
+
+Response `200 OK`:
+
+```json
+{
+  "summary": { "total": 2, "deactivated": 2, "not_found": 0 },
+  "items": [
+    { "code": "abc123", "status": "deactivated" },
+    { "code": "xyz456", "status": "deactivated" }
+  ]
+}
+```
+
+- `codes`: 1–1000 items. Duplicates are de-duplicated before processing (first occurrence wins).
+- `domain_id`: optional — omit to use the default domain. Unknown `domain_id` returns `404`.
+- `summary.total`: unique codes processed (after de-duplication).
+- `status`: `"deactivated"` or `"not_found"`. `not_found` means the code does not exist **or** was already deactivated.
+- Items are returned in original input order.
+
+---
+
+### Batch Restore Links
+
+**`POST /api/links/batch-restore`**
+
+Restores (un-deletes) up to 1000 previously deactivated links. Partial success — missing or already-active codes are reported as `not_found`. Idempotent.
+
+```bash
+curl -X POST http://127.0.0.1:3000/api/links/batch-restore \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"codes": ["abc123", "xyz456", "missing"], "domain_id": 1}'
+```
+
+Response `200 OK`:
+
+```json
+{
+  "summary": { "total": 3, "restored": 1, "not_found": 2 },
+  "items": [
+    { "code": "abc123", "status": "restored" },
+    { "code": "xyz456", "status": "not_found" },
+    { "code": "missing", "status": "not_found" }
+  ]
+}
+```
+
+- Same shape as batch-deactivate. `status` is `"restored"` or `"not_found"`. `not_found` means the code does not exist **or** is already active (not soft-deleted).
 
 ---
 
@@ -280,10 +372,10 @@ Response `204 No Content`.
 | Parameter   | Default | Description |
 |:------------|:-------:|:------------|
 | `page`      | `1`     | Page number (1-indexed) |
-| `page_size` | `25`    | Items per page (max 1000) |
+| `page_size` | `25`    | Items per page (min 10, max 1000) |
 | `from`      | —       | Click date range start (RFC3339) |
 | `to`        | —       | Click date range end (RFC3339) |
-| `domain`    | —       | Filter by domain name |
+| `domain_id` | —       | Filter by domain id (integer); omit for all domains |
 
 Response `200 OK`:
 
@@ -302,7 +394,7 @@ Response `200 OK`:
 
 **`GET /api/stats/{code}`**
 
-Same query parameters as `GET /api/stats`.
+Same query parameters as `GET /api/stats` (including `domain_id`; omit for cross-domain lookup).
 
 Response `200 OK`:
 

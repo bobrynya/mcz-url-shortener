@@ -3,6 +3,7 @@
 //! All DTOs use Serde for JSON serialization/deserialization and validator
 //! for input validation.
 
+pub mod batch_links;
 pub mod clicks;
 pub mod domain;
 pub mod health;

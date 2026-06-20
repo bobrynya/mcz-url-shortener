@@ -1,0 +1,23 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE links\n            SET deleted_at = NULL\n            WHERE domain_id = $1\n              AND code = ANY($2)\n              AND deleted_at IS NOT NULL\n            RETURNING code\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "code",
+        "type_info": "Text"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "TextArray"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "d5862723b614f3c2e2d37aee054b3f3a40f0abd2eaa7356603f093e1730d3ca8"
+}

@@ -222,3 +222,33 @@ async fn test_stats_list_pagination(pool: PgPool) {
     assert_eq!(json["pagination"]["page_size"], 10);
     assert!(json["pagination"]["total_items"].as_i64().unwrap() >= 30);
 }
+
+#[sqlx::test]
+async fn test_stats_list_filtered_by_domain_id(pool: PgPool) {
+    let domain_a = common::create_test_domain(&pool, "filter-a.com").await;
+    let domain_b = common::create_test_domain(&pool, "filter-b.com").await;
+    common::create_test_link(&pool, "a-only", "https://a.com", domain_a).await;
+    common::create_test_link(&pool, "b-only", "https://b.com", domain_b).await;
+
+    let state = common::create_test_state_with(
+        pool.clone(),
+        Arc::new(NoopClickPublisher),
+        Arc::new(FakeStatsReader::new()),
+    );
+    let app = Router::new()
+        .route("/api/stats", get(stats_list_handler))
+        .with_state(state);
+    let server = TestServer::new(app).unwrap();
+
+    // Filter to domain_a only.
+    let response = server
+        .get("/api/stats")
+        .add_query_param("domain_id", domain_a)
+        .await;
+
+    response.assert_status_ok();
+    let json = response.json::<serde_json::Value>();
+    let items = json["items"].as_array().unwrap();
+    // Only domain_a's single link is returned (fresh ephemeral DB has just these two links).
+    assert_eq!(items.len(), 1);
+}

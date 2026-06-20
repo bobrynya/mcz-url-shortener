@@ -44,8 +44,9 @@ const Api = {
   updateLink(code, patch) {
     return Api.request(`/api/links/${code}`, { method: 'PATCH', body: JSON.stringify(patch) });
   },
-  deleteLink(code) {
-    return Api.request(`/api/links/${code}`, { method: 'DELETE' });
+  deleteLink(code, domainId) {
+    const qs = domainId != null && domainId !== '' ? `?domain_id=${domainId}` : '';
+    return Api.request(`/api/links/${code}${qs}`, { method: 'DELETE' });
   },
   getLinkStats(code, params) {
     return Api.request(`/api/stats/${code}?${new URLSearchParams(clean(params))}`);
@@ -190,10 +191,7 @@ function dashboardPage() {
 
       const urls = this.fields.map(f => {
         const item = { url: f.url };
-        if (f.domainId) {
-          const d = this.domains.find(d => String(d.id) === String(f.domainId));
-          if (d) item.domain = d.domain;
-        }
+        if (f.domainId) item.domain_id = Number(f.domainId);
         if (f.customCode) item.custom_code = f.customCode;
         if (f.expiresAt) item.expires_at = new Date(f.expiresAt).toISOString();
         if (f.permanent) item.permanent = true;
@@ -219,7 +217,7 @@ function linksPage() {
   return {
     links: [],
     domains: [],
-    domain: '',
+    domainId: '',
     fromDate: '',
     toDate: '',
     pageSize: 25,
@@ -228,6 +226,7 @@ function linksPage() {
     totalItems: 0,
     loading: false,
     editingCode: null,
+    editDomainId: null,
     editForm: { url: '', expiresAt: '', permanent: false, restore: false },
     editError: '',
     deleteConfirm: null,
@@ -247,12 +246,17 @@ function linksPage() {
       if (res?.ok) this.domains = res.data.items;
     },
 
+    domainIdFor(name) {
+      const d = this.domains.find(d => d.domain === name);
+      return d ? d.id : null;
+    },
+
     async load() {
       this.loading = true;
       const res = await Api.getLinks({
         page: this.page,
         page_size: this.pageSize,
-        domain: this.domain,
+        domain_id: this.domainId,
         from: this.fromDate ? new Date(this.fromDate).toISOString() : '',
         to: this.toDate ? new Date(this.toDate).toISOString() : '',
       });
@@ -266,7 +270,7 @@ function linksPage() {
 
     applyFilters() { this.page = 1; this.load(); },
     resetFilters() {
-      this.domain = ''; this.fromDate = ''; this.toDate = '';
+      this.domainId = ''; this.fromDate = ''; this.toDate = '';
       this.pageSize = 25; this.page = 1; this.load();
     },
     goToPage(p) { this.page = p; this.load(); },
@@ -281,6 +285,7 @@ function linksPage() {
       this.editingCode = link.code;
       this.editError = '';
       this.editForm = { url: link.longUrl, expiresAt: '', permanent: false, restore: false };
+      this.editDomainId = this.domainIdFor(link.domain);
     },
     cancelEdit() { this.editingCode = null; },
 
@@ -289,6 +294,7 @@ function linksPage() {
       const patch = { url: this.editForm.url, permanent: this.editForm.permanent };
       if (this.editForm.expiresAt) patch.expires_at = new Date(this.editForm.expiresAt).toISOString();
       if (this.editForm.restore) patch.restore = true;
+      if (this.editDomainId != null) patch.domain_id = this.editDomainId;
       const res = await Api.updateLink(code, patch);
       if (res?.ok) {
         this.editingCode = null;
@@ -302,7 +308,9 @@ function linksPage() {
     cancelDelete() { this.deleteConfirm = null; },
 
     async doDelete(code) {
-      const res = await Api.deleteLink(code);
+      const link = this.links.find(l => l.code === code);
+      const domainId = link ? this.domainIdFor(link.domain) : null;
+      const res = await Api.deleteLink(code, domainId);
       this.deleteConfirm = null;
       if (res === null) await this.load(); // 204 success
     },

@@ -17,11 +17,11 @@
         <div class="flex flex-wrap items-end gap-3">
             <div>
                 <label class="block text-xs text-gray-500 mb-1">Domain</label>
-                <select x-model="domain"
+                <select x-model="domainId"
                         class="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition">
                     <option value="">All Domains</option>
                     <template x-for="d in domains" :key="d.id">
-                        <option :value="d.domain" x-text="d.domain"></option>
+                        <option :value="d.id" x-text="d.domain"></option>
                     </template>
                 </select>
             </div>

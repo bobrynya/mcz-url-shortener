@@ -171,6 +171,32 @@ impl<L: LinkRepository, D: DomainRepository> LinkService<L, D> {
         self.link_repository.update(code, domain_id, patch).await
     }
 
+    /// Bulk-deactivates `codes` within `domain_id`. Input is de-duplicated
+    /// (first occurrence kept). Returns the codes actually transitioned
+    /// (were active, now soft-deleted).
+    pub async fn deactivate_links(
+        &self,
+        codes: Vec<String>,
+        domain_id: i64,
+    ) -> Result<Vec<String>, AppError> {
+        let unique = dedup_preserving_order(codes);
+        self.link_repository
+            .soft_delete_many(&unique, domain_id)
+            .await
+    }
+
+    /// Bulk-restores `codes` within `domain_id`. Input is de-duplicated
+    /// (first occurrence kept). Returns the codes actually transitioned
+    /// (were soft-deleted, now active).
+    pub async fn restore_links(
+        &self,
+        codes: Vec<String>,
+        domain_id: i64,
+    ) -> Result<Vec<String>, AppError> {
+        let unique = dedup_preserving_order(codes);
+        self.link_repository.restore_many(&unique, domain_id).await
+    }
+
     /// Generates a unique short code for a domain with collision retry.
     async fn generate_unique_code(&self, domain_id: i64) -> Result<String, AppError> {
         const MAX_ATTEMPTS: usize = 10;
@@ -193,6 +219,15 @@ impl<L: LinkRepository, D: DomainRepository> LinkService<L, D> {
             json!({ "reason": "Too many collisions" }),
         ))
     }
+}
+
+/// De-duplicates codes, preserving the order of each code's first occurrence.
+fn dedup_preserving_order(codes: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    codes
+        .into_iter()
+        .filter(|c| seen.insert(c.clone()))
+        .collect()
 }
 
 #[cfg(test)]
@@ -486,5 +521,49 @@ mod tests {
             .await;
 
         assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_deactivate_links_dedups_and_returns_affected() {
+        let mut mock_link_repo = MockLinkRepository::new();
+        let mock_domain_repo = MockDomainRepository::new();
+
+        // Dedup keeps first occurrence; "a","b" only (the repeated "a" collapses).
+        mock_link_repo
+            .expect_soft_delete_many()
+            .withf(|codes, domain_id| {
+                *domain_id == 1 && codes == ["a".to_string(), "b".to_string()]
+            })
+            .times(1)
+            .returning(|_, _| Ok(vec!["a".to_string()]));
+
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
+
+        let affected = service
+            .deactivate_links(vec!["a".to_string(), "b".to_string(), "a".to_string()], 1)
+            .await
+            .unwrap();
+
+        assert_eq!(affected, vec!["a".to_string()]);
+    }
+
+    #[tokio::test]
+    async fn test_restore_links_delegates_to_repo() {
+        let mut mock_link_repo = MockLinkRepository::new();
+        let mock_domain_repo = MockDomainRepository::new();
+
+        mock_link_repo
+            .expect_restore_many()
+            .withf(|codes, domain_id| *domain_id == 2 && codes == ["x".to_string()])
+            .times(1)
+            .returning(|_, _| Ok(vec!["x".to_string()]));
+
+        let service = LinkService::new(Arc::new(mock_link_repo), Arc::new(mock_domain_repo), true);
+
+        let affected = service
+            .restore_links(vec!["x".to_string()], 2)
+            .await
+            .unwrap();
+        assert_eq!(affected, vec!["x".to_string()]);
     }
 }
