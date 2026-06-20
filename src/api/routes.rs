@@ -4,8 +4,9 @@
 //! [`crate::api::middleware::auth`].
 
 use crate::api::handlers::{
-    create_domain_handler, delete_domain_handler, delete_link_handler, domain_list_handler,
-    shorten_handler, stats_handler, stats_list_handler, update_domain_handler, update_link_handler,
+    batch_deactivate_handler, batch_restore_handler, create_domain_handler, delete_domain_handler,
+    delete_link_handler, domain_list_handler, shorten_handler, stats_handler, stats_list_handler,
+    update_domain_handler, update_link_handler,
 };
 use crate::state::AppState;
 use axum::{
@@ -24,8 +25,10 @@ use axum::{
 /// - `GET    /stats`          - Aggregated click statistics (paginated)
 /// - `GET    /stats/{code}`   - Detailed statistics for a specific link
 /// - `POST   /shorten`        - Create shortened URLs (batch-capable)
-/// - `DELETE /links/{code}`   - Soft-delete a link
-/// - `PATCH  /links/{code}`   - Partially update a link
+/// - `DELETE /links/{code}`        - Soft-delete a link
+/// - `PATCH  /links/{code}`        - Partially update a link
+/// - `POST   /links/batch-deactivate` - Bulk soft-delete links
+/// - `POST   /links/batch-restore`    - Bulk restore soft-deleted links
 pub fn protected_routes() -> Router<AppState> {
     Router::new()
         .route(
@@ -43,4 +46,6 @@ pub fn protected_routes() -> Router<AppState> {
             "/links/{code}",
             delete(delete_link_handler).patch(update_link_handler),
         )
+        .route("/links/batch-deactivate", post(batch_deactivate_handler))
+        .route("/links/batch-restore", post(batch_restore_handler))
 }

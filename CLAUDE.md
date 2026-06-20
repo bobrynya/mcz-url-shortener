@@ -68,6 +68,18 @@ cargo run --bin admin                # admin CLI tool
 - New API endpoints go in `api/handlers/` with a corresponding route registered in `api/routes.rs`.
 - Web (HTML) endpoints go in `web/` with routes in `web/routes.rs`.
 
+### Domain Selector Convention
+
+The management API selects a domain by explicit `domain_id` (i64, primary key from the `domains` table):
+- **Mutating operations** (`POST /api/shorten`, `PATCH /api/links/{code}`, `DELETE /api/links/{code}`, `POST /api/links/batch-deactivate`, `POST /api/links/batch-restore`): `domain_id` omitted → default domain.
+- **Stats filters** (`GET /api/stats`, `GET /api/stats/{code}`): `domain_id` omitted → no domain filter (all domains / cross-domain lookup).
+- The **public redirect** (`GET /{code}`) continues to resolve the domain from the `Host` request header — unchanged.
+
+Two bulk endpoints (both in `api/handlers/links.rs`, registered in `api/routes.rs`):
+- `POST /api/links/batch-deactivate` — soft-deletes up to 1000 codes; partial success, idempotent.
+- `POST /api/links/batch-restore` — restores up to 1000 soft-deleted codes; partial success, idempotent.
+Request: `{ "codes": [...], "domain_id"?: i64 }`. Response: `{ "summary": { "total", "deactivated"|"restored", "not_found" }, "items": [{ "code", "status" }] }`.
+
 ## Testing
 
 - **Unit tests**: in-module with `mockall` mocks (`MockLinkRepository` etc.).

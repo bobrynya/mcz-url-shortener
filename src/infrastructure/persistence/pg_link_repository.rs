@@ -288,4 +288,50 @@ impl LinkRepository for PgLinkRepository {
             row.deleted_at,
         ))
     }
+
+    async fn soft_delete_many(
+        &self,
+        codes: &[String],
+        domain_id: i64,
+    ) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            UPDATE links
+            SET deleted_at = now()
+            WHERE domain_id = $1
+              AND code = ANY($2)
+              AND deleted_at IS NULL
+            RETURNING code
+            "#,
+            domain_id,
+            codes,
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.into_iter().map(|r| r.code).collect())
+    }
+
+    async fn restore_many(
+        &self,
+        codes: &[String],
+        domain_id: i64,
+    ) -> Result<Vec<String>, AppError> {
+        let rows = sqlx::query!(
+            r#"
+            UPDATE links
+            SET deleted_at = NULL
+            WHERE domain_id = $1
+              AND code = ANY($2)
+              AND deleted_at IS NOT NULL
+            RETURNING code
+            "#,
+            domain_id,
+            codes,
+        )
+        .fetch_all(self.pool.as_ref())
+        .await?;
+
+        Ok(rows.into_iter().map(|r| r.code).collect())
+    }
 }

@@ -26,8 +26,8 @@ pub struct UrlItem {
     #[validate(url(message = "Invalid URL format"))]
     pub url: String,
 
-    /// Optional domain override (otherwise uses default domain).
-    pub domain: Option<String>,
+    /// Optional target domain id (otherwise uses the default domain).
+    pub domain_id: Option<i64>,
 
     /// Optional custom short code (validated for length and characters).
     #[validate(length(min = 4, max = 50))]

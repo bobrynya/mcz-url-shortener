@@ -160,3 +160,83 @@ async fn test_find_by_long_url(pool: PgPool) {
     assert!(link.is_some());
     assert_eq!(link.unwrap().code, "xyz789");
 }
+
+#[sqlx::test]
+async fn test_soft_delete_many_transitions_only_active(pool: PgPool) {
+    let repo = PgLinkRepository::new(Arc::new(pool.clone()));
+    let domain_id = common::get_default_domain(&pool).await;
+
+    common::create_test_link(&pool, "bd001", "https://a.com", domain_id).await;
+    common::create_test_link(&pool, "bd002", "https://b.com", domain_id).await;
+    common::create_deleted_link(&pool, "bd003", "https://c.com", domain_id).await;
+
+    let codes = vec![
+        "bd001".to_string(),
+        "bd002".to_string(),
+        "bd003".to_string(), // already deleted → not transitioned
+        "bd404".to_string(), // missing → not transitioned
+    ];
+    let mut affected = repo.soft_delete_many(&codes, domain_id).await.unwrap();
+    affected.sort();
+
+    assert_eq!(affected, vec!["bd001".to_string(), "bd002".to_string()]);
+
+    // Re-running is idempotent: nothing left to transition.
+    let again = repo.soft_delete_many(&codes, domain_id).await.unwrap();
+    assert!(again.is_empty());
+}
+
+#[sqlx::test]
+async fn test_soft_delete_many_scoped_to_domain(pool: PgPool) {
+    let repo = PgLinkRepository::new(Arc::new(pool.clone()));
+    let default_id = common::get_default_domain(&pool).await;
+    let other_id = common::create_test_domain(&pool, "other.example.com").await;
+
+    common::create_test_link(&pool, "shared", "https://a.com", default_id).await;
+    common::create_test_link(&pool, "shared", "https://b.com", other_id).await;
+
+    let affected = repo
+        .soft_delete_many(&["shared".to_string()], default_id)
+        .await
+        .unwrap();
+    assert_eq!(affected, vec!["shared".to_string()]);
+
+    // The other domain's "shared" link is untouched and still deactivatable.
+    let other = repo
+        .soft_delete_many(&["shared".to_string()], other_id)
+        .await
+        .unwrap();
+    assert_eq!(other, vec!["shared".to_string()]);
+}
+
+#[sqlx::test]
+async fn test_soft_delete_many_empty_input(pool: PgPool) {
+    let repo = PgLinkRepository::new(Arc::new(pool.clone()));
+    let domain_id = common::get_default_domain(&pool).await;
+    let affected = repo.soft_delete_many(&[], domain_id).await.unwrap();
+    assert!(affected.is_empty());
+}
+
+#[sqlx::test]
+async fn test_restore_many_transitions_only_deleted(pool: PgPool) {
+    let repo = PgLinkRepository::new(Arc::new(pool.clone()));
+    let domain_id = common::get_default_domain(&pool).await;
+
+    common::create_deleted_link(&pool, "rs001", "https://a.com", domain_id).await;
+    common::create_deleted_link(&pool, "rs002", "https://b.com", domain_id).await;
+    common::create_test_link(&pool, "rs003", "https://c.com", domain_id).await; // active → not transitioned
+
+    let codes = vec![
+        "rs001".to_string(),
+        "rs002".to_string(),
+        "rs003".to_string(),
+        "rs404".to_string(),
+    ];
+    let mut affected = repo.restore_many(&codes, domain_id).await.unwrap();
+    affected.sort();
+    assert_eq!(affected, vec!["rs001".to_string(), "rs002".to_string()]);
+
+    // Idempotent: already restored → nothing to transition.
+    let again = repo.restore_many(&codes, domain_id).await.unwrap();
+    assert!(again.is_empty());
+}

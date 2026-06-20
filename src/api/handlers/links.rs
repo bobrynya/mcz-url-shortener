@@ -3,13 +3,17 @@
 use axum::{
     Json,
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::StatusCode,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use serde_json::json;
 use validator::Validate;
 
+use crate::api::dto::batch_links::{
+    BatchDeactivateResponse, BatchDeactivateSummary, BatchLinkItem, BatchLinksRequest,
+    BatchRestoreResponse, BatchRestoreSummary,
+};
 use crate::api::dto::shorten::{
     BatchSummary, ShortenRequest, ShortenResponse, ShortenResultItem, UrlItem,
 };
@@ -17,7 +21,12 @@ use crate::api::dto::update_link::UpdateLinkRequest;
 use crate::domain::entities::LinkPatch;
 use crate::error::AppError;
 use crate::state::AppState;
-use crate::utils::extract_domain::extract_domain_from_headers;
+/// Query parameters for `DELETE /api/links/{code}`.
+#[derive(Debug, serde::Deserialize)]
+pub struct DeleteLinkQuery {
+    /// Target domain id. When omitted, the default domain is used.
+    pub domain_id: Option<i64>,
+}
 
 /// JSON representation of a link returned after update.
 #[derive(Debug, Serialize)]
@@ -49,7 +58,7 @@ pub struct LinkResponse {
 ///   "urls": [
 ///     {
 ///       "url": "https://example.com",
-///       "domain": "s.example.com",  // optional
+///       "domain_id": 1,  // optional
 ///       "custom_code": "my-link"     // optional
 ///     }
 ///   ]
@@ -105,8 +114,8 @@ pub async fn shorten_handler(
 
 /// Resolves the target domain, creates the short link, and generates the full URL.
 async fn process_single_url(state: &AppState, item: UrlItem) -> Result<(String, String), AppError> {
-    let domain = if let Some(domain_name) = item.domain {
-        state.domain_service.get_domain(&domain_name).await?
+    let domain = if let Some(domain_id) = item.domain_id {
+        state.domain_service.get_domain_by_id(domain_id).await?
     } else {
         state.domain_service.get_default_domain().await?
     };
@@ -158,13 +167,15 @@ async fn process_single_url(state: &AppState, item: UrlItem) -> Result<(String, 
 pub async fn update_link_handler(
     Path(code): Path<String>,
     State(state): State<AppState>,
-    headers: HeaderMap,
     Json(payload): Json<UpdateLinkRequest>,
 ) -> Result<Json<LinkResponse>, AppError> {
     payload.validate()?;
 
-    let domain = extract_domain_from_headers(&headers)?;
-    let domain_entity = state.domain_service.get_domain(&domain).await?;
+    let domain_entity = match payload.domain_id {
+        Some(id) => state.domain_service.get_domain_by_id(id).await?,
+        None => state.domain_service.get_default_domain().await?,
+    };
+    let domain = domain_entity.domain.clone();
 
     let patch = LinkPatch {
         url: payload.url,
@@ -219,10 +230,13 @@ pub async fn update_link_handler(
 pub async fn delete_link_handler(
     Path(code): Path<String>,
     State(state): State<AppState>,
-    headers: HeaderMap,
+    axum::extract::Query(query): axum::extract::Query<DeleteLinkQuery>,
 ) -> Result<StatusCode, AppError> {
-    let domain = extract_domain_from_headers(&headers)?;
-    let domain_entity = state.domain_service.get_domain(&domain).await?;
+    let domain_entity = match query.domain_id {
+        Some(id) => state.domain_service.get_domain_by_id(id).await?,
+        None => state.domain_service.get_default_domain().await?,
+    };
+    let domain = domain_entity.domain.clone();
 
     let deleted = state
         .link_service
@@ -242,4 +256,109 @@ pub async fn delete_link_handler(
     }
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+/// Resolves the target domain for a batch request: an explicit `domain_id` (404
+/// if unknown), or the default domain when omitted.
+async fn resolve_batch_domain(
+    state: &AppState,
+    domain_id: Option<i64>,
+) -> Result<crate::domain::entities::Domain, AppError> {
+    match domain_id {
+        Some(id) => state.domain_service.get_domain_by_id(id).await,
+        None => state.domain_service.get_default_domain().await,
+    }
+}
+
+/// Builds per-code items in original (de-duplicated) input order, marking each
+/// code `affected_status` when present in `affected`, else `not_found`.
+fn build_batch_items(
+    requested: &[String],
+    affected: &[String],
+    affected_status: &str,
+) -> Vec<BatchLinkItem> {
+    let affected_set: std::collections::HashSet<&String> = affected.iter().collect();
+    let mut seen = std::collections::HashSet::new();
+    requested
+        .iter()
+        .filter(|c| seen.insert((*c).clone()))
+        .map(|code| BatchLinkItem {
+            code: code.clone(),
+            status: if affected_set.contains(code) {
+                affected_status.to_string()
+            } else {
+                "not_found".to_string()
+            },
+        })
+        .collect()
+}
+
+/// Bulk-deactivates (soft-deletes) short links.
+///
+/// `POST /api/links/batch-deactivate` — body `{ "codes": [...], "domain_id"?: i64 }`.
+/// Returns HTTP 200 with a per-code summary; missing or already-deleted codes are
+/// reported as `not_found`. Idempotent.
+pub async fn batch_deactivate_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<BatchLinksRequest>,
+) -> Result<Json<BatchDeactivateResponse>, AppError> {
+    payload.validate()?;
+    let domain = resolve_batch_domain(&state, payload.domain_id).await?;
+
+    let affected = state
+        .link_service
+        .deactivate_links(payload.codes.clone(), domain.id)
+        .await?;
+
+    for code in &affected {
+        let cache_key = format!("{}:{}", domain.domain, code);
+        if let Err(e) = state.cache.invalidate(&cache_key).await {
+            tracing::warn!(error = ?e, cache_key, "Failed to invalidate cache after batch deactivate");
+        }
+    }
+
+    let items = build_batch_items(&payload.codes, &affected, "deactivated");
+    Ok(Json(BatchDeactivateResponse {
+        summary: BatchDeactivateSummary {
+            total: items.len(),
+            deactivated: affected.len(),
+            not_found: items.len() - affected.len(),
+        },
+        items,
+    }))
+}
+
+/// Bulk-restores soft-deleted short links.
+///
+/// `POST /api/links/batch-restore` — body `{ "codes": [...], "domain_id"?: i64 }`.
+/// Returns HTTP 200 with a per-code summary; missing or already-active codes are
+/// reported as `not_found`. Idempotent.
+pub async fn batch_restore_handler(
+    State(state): State<AppState>,
+    Json(payload): Json<BatchLinksRequest>,
+) -> Result<Json<BatchRestoreResponse>, AppError> {
+    payload.validate()?;
+    let domain = resolve_batch_domain(&state, payload.domain_id).await?;
+
+    let affected = state
+        .link_service
+        .restore_links(payload.codes.clone(), domain.id)
+        .await?;
+
+    for code in &affected {
+        let cache_key = format!("{}:{}", domain.domain, code);
+        if let Err(e) = state.cache.invalidate(&cache_key).await {
+            tracing::warn!(error = ?e, cache_key, "Failed to invalidate cache after batch restore");
+        }
+    }
+
+    let items = build_batch_items(&payload.codes, &affected, "restored");
+    Ok(Json(BatchRestoreResponse {
+        summary: BatchRestoreSummary {
+            total: items.len(),
+            restored: affected.len(),
+            not_found: items.len() - affected.len(),
+        },
+        items,
+    }))
 }

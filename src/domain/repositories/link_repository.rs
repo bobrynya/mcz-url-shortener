@@ -107,4 +107,28 @@ pub trait LinkRepository: Send + Sync {
     /// Returns [`AppError::NotFound`] if no link matches `code` + `domain_id`.
     /// Returns [`AppError::Internal`] on database errors.
     async fn update(&self, code: &str, domain_id: i64, patch: LinkPatch) -> Result<Link, AppError>;
+
+    /// Deactivates (soft-deletes) the given codes within a domain in one
+    /// statement. Only currently-active links are transitioned. Returns the
+    /// codes that were actually transitioned, so callers can compute which
+    /// inputs were `not_found` (absent or already deleted).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::Internal`] on database errors.
+    async fn soft_delete_many(
+        &self,
+        codes: &[String],
+        domain_id: i64,
+    ) -> Result<Vec<String>, AppError>;
+
+    /// Restores the given soft-deleted codes within a domain in one statement.
+    /// Only currently-deleted links are transitioned. Returns the codes that
+    /// were actually transitioned.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`AppError::Internal`] on database errors.
+    async fn restore_many(&self, codes: &[String], domain_id: i64)
+    -> Result<Vec<String>, AppError>;
 }
