@@ -124,7 +124,9 @@ impl<L: LinkRepository, D: DomainRepository> LinkService<L, D> {
             permanent,
         };
 
-        self.link_repository.create(new_link).await
+        let created = self.link_repository.create(new_link).await?;
+        metrics::counter!("links_created_total").increment(1);
+        Ok(created)
     }
 
     /// Retrieves a link by its short code and domain.

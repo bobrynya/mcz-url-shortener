@@ -18,6 +18,7 @@
 use crate::api;
 use crate::api::handlers::{health_handler, redirect_handler};
 use crate::api::middleware::{auth, rate_limit, tracing};
+use crate::observability::metrics::metrics_handler;
 use crate::state::AppState;
 use crate::web;
 use crate::web::middleware::web_auth;
@@ -60,9 +61,13 @@ pub fn app_router(state: AppState, behind_proxy: bool) -> NormalizePath<Router> 
     let router = Router::new()
         .merge(redirect_router)
         .route("/health", get(health_handler))
+        .route("/metrics", get(metrics_handler))
         .nest("/api", api_router)
         .nest("/dashboard", web_router)
         .nest_service("/static", ServeDir::new("static"))
+        .route_layer(middleware::from_fn(
+            crate::api::middleware::metrics::track_metrics,
+        ))
         .with_state(state)
         .layer(tracing::layer());
 

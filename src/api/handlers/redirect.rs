@@ -60,11 +60,13 @@ pub async fn redirect_handler(
 
     let (long_url, permanent, link_id) = match state.cache.get_url(&cache_key).await {
         Ok(Some(cached_value)) => {
+            metrics::counter!("cache_requests_total", "result" => "hit").increment(1);
             debug!("Cache HIT for {}", cache_key);
             let (link_id, url, permanent) = parse_cached_value(&cached_value);
             (url, permanent, link_id)
         }
         Ok(None) => {
+            metrics::counter!("cache_requests_total", "result" => "miss").increment(1);
             debug!("Cache MISS for {}", cache_key);
 
             let link = load_active_link(&state, &domain, &code).await?;
@@ -92,6 +94,7 @@ pub async fn redirect_handler(
             (url, permanent, link_id)
         }
         Err(e) => {
+            metrics::counter!("cache_requests_total", "result" => "error").increment(1);
             error!("Cache error: {}", e);
 
             // Fall back to database on cache error.

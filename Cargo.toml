@@ -80,6 +80,7 @@ getrandom = "0.4"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["env-filter", "fmt", "ansi", "json"] }
 metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.16", default-features = false }
 
 # Error handling
 anyhow = "1.0"

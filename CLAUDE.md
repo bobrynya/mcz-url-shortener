@@ -59,6 +59,10 @@ cargo run --bin admin                # admin CLI tool
 - **Clippy**: all warnings are errors (`-D warnings`). Fix all lints.
 - **No `unwrap()`/`expect()`** outside of tests, const initialization, or explicitly documented panic-safe contexts.
 - **Imports**: group `std` → external crates → internal (`crate::`) with blank lines between groups.
+- **Metrics**: emit via the `metrics` facade (`metrics::counter!`/`histogram!`). The
+  Prometheus recorder + `/metrics` endpoint live in `src/observability/metrics.rs`;
+  HTTP metrics are recorded by `src/api/middleware/metrics.rs`. The `path` label
+  must always come from `MatchedPath` (route template), never the raw URI.
 
 ## Architecture Rules
 
