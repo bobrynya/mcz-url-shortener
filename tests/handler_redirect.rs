@@ -243,6 +243,38 @@ async fn test_redirect_expired_link_returns_410(pool: PgPool) {
     assert_eq!(body["error"]["code"], "gone");
 }
 
+#[sqlx::test]
+async fn redirect_emits_cache_miss_metric(pool: PgPool) {
+    use url_shortener::observability::metrics::install_prometheus_recorder;
+
+    let handle = install_prometheus_recorder();
+    let domain_id = common::get_default_domain(&pool).await;
+    common::create_test_link(&pool, "cmiss", "https://example.com/cmiss", domain_id).await;
+
+    let state = common::create_test_state(pool.clone());
+    let app = Router::new()
+        .route("/{code}", get(redirect_handler))
+        .layer(MockConnectInfoLayer)
+        .with_state(state);
+    let server = TestServer::new(app).unwrap();
+
+    // NullCache always misses, so the first redirect emits result="miss".
+    server
+        .get("/cmiss")
+        .add_header("Host", "s.example.com")
+        .await;
+
+    let body = handle.render();
+    assert!(
+        body.contains("cache_requests_total"),
+        "missing cache_requests_total in:\n{body}"
+    );
+    assert!(
+        body.contains(r#"result="miss""#),
+        "missing result=\"miss\" label in:\n{body}"
+    );
+}
+
 /// axum's `Redirect::permanent` issues 308 Permanent Redirect (method-preserving),
 /// not 301 Moved Permanently. Both are permanent; 308 is the modern standard.
 #[sqlx::test]

@@ -6,6 +6,8 @@
 
 use std::sync::Arc;
 
+use metrics_exporter_prometheus::PrometheusHandle;
+
 use crate::application::services::{AuthService, DomainService, LinkService, StatsService};
 use crate::domain::repositories::{ClickPublisher, ClickStatsReader};
 use crate::infrastructure::cache::CacheService;
@@ -37,6 +39,9 @@ pub struct AppState {
 
     /// Whether the dashboard auth cookie should be marked `Secure`.
     pub cookie_secure: bool,
+
+    /// Prometheus exposition handle, rendered by `GET /metrics`.
+    pub metrics_handle: PrometheusHandle,
 }
 
 impl AppState {
@@ -78,6 +83,8 @@ impl AppState {
         let auth_service = Arc::new(AuthService::new(token_repo, token_signing_secret));
         let domain_service = Arc::new(DomainService::new(domain_repo));
 
+        let metrics_handle = crate::observability::metrics::install_prometheus_recorder();
+
         Self {
             link_service,
             stats_service,
@@ -88,6 +95,7 @@ impl AppState {
             kafka,
             clickhouse,
             cookie_secure,
+            metrics_handle,
         }
     }
 

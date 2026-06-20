@@ -575,20 +575,40 @@ RUST_LOG=debug cargo run         # include cache hits/misses
 LOG_FORMAT=json cargo run        # structured JSON for log aggregators
 ```
 
+---
+
+## Observability
+
+The service exposes Prometheus metrics at `GET /metrics` (text exposition format,
+`text/plain; version=0.0.4`).
+
+### Security
+
+`/metrics` is **open on the main service port**. It exposes internal operational
+metrics, so production deployments **must** block the `/metrics` path at the load
+balancer / ingress / firewall. Relocating it to a separate admin port or putting
+it behind authentication is intentionally out of scope for now.
+
 ### Metrics
 
-Built-in Prometheus-compatible counters (exposed at `GET /metrics`):
+| Metric | Type | Labels | Meaning |
+|--------|------|--------|---------|
+| `http_requests_total` | counter | `method`, `path`, `status` | HTTP requests; `path` is the route template (e.g. `/{code}`), never the raw path |
+| `http_request_duration_seconds` | histogram | `method`, `path`, `status` | Request latency in seconds |
+| `cache_requests_total` | counter | `result` (`hit`/`miss`/`error`) | Redis cache outcomes on redirect |
+| `links_created_total` | counter | — | Links actually created (excludes deduplicated hits) |
+| `database_errors_total` | counter | `type` | Database errors by category |
+| `click_publish_total` | counter | — | Click events published to Kafka |
+| `click_publish_dropped_total` | counter | `reason` | Click events dropped before publish |
+| `click_consumer_received_total` | counter | — | Click events received by the consumer |
+| `click_consumer_inserted_total` | counter | — | Click events inserted into ClickHouse |
+| `click_consumer_insert_failed_total` | counter | — | Failed ClickHouse inserts |
+| `click_consumer_batch_size` | histogram | — | Consumer batch sizes |
 
-| Metric | Description |
-|:-------|:------------|
-| `click_publish_total` | Click events successfully sent to Kafka |
-| `click_publish_dropped_total{reason}` | Click events dropped before Kafka (reason: `not_configured`, `serialize`, `send`) |
-| `click_consumer_received_total` | Click events consumed from Kafka |
-| `click_consumer_invalid_total` | Kafka messages that failed deserialization |
-| `click_consumer_inserted_total` | Click events successfully batch-inserted into ClickHouse |
-| `click_consumer_insert_failed_total` | ClickHouse batch insert failures |
-| `click_consumer_batch_size` | Histogram of ClickHouse insert batch sizes |
-| `database_errors_total{type}` | PostgreSQL errors by type |
+### Grafana dashboard
+
+Import `dashboards/url-shortener.json` into Grafana (Dashboards → Import). On
+import, select your Prometheus data source for the `DS_PROMETHEUS` variable.
 
 ---
 
